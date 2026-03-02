@@ -365,6 +365,32 @@ function generateJourneyInstances(count: number) {
   return instances;
 }
 
+function generateSurveySubmissions(surveyId: number, count: number) {
+  const submissions = [];
+  for (let i = 1; i <= count; i++) {
+    const submitted = new Date('2024-06-01');
+    submitted.setDate(submitted.getDate() + i);
+    submissions.push({
+      id: surveyId * 100 + i,
+      organization: { id: KPD.id, title: KPD.title },
+      respondent:
+        i % 3 === 0
+          ? null
+          : {
+              email: `respondent${i}@example.org`,
+              first_name: `Respondent`,
+              id: i % 5 === 0 ? null : i,
+              last_name: `${surveyId}-${i}`,
+            },
+      survey: { id: surveyId, title: `Survey ${surveyId}` },
+      submitted: submitted.toISOString(),
+    });
+  }
+  return submissions;
+}
+
+export { generateSurveySubmissions };
+
 export const OrgTags = generateTags(150);
 export const PersonTags = generatePersonTags(OrgTags, 30);
 export const TagGroups = [

@@ -198,12 +198,22 @@ const test = base.extend<BenchmarkFixtures, BenchmarkWorkerFixtures>({
   },
 
   iterations: async ({}, use) => {
-    const n = parseInt(process.env.BENCH_ITERATIONS || '5', 10);
-    await use(n);
+    const measured = parseInt(process.env.BENCH_ITERATIONS || '5', 10);
+    // Add 3 warmup iterations so the server is fully warm before measuring.
+    // Tests call measure() which skips the first 3 calls per scenario.
+    await use(measured + 3);
   },
 
   measure: async ({}, use) => {
+    const warmupCount = 3;
+    const callCounts: Record<string, number> = {};
+
     const measure = (name: string, durationMs: number) => {
+      callCounts[name] = (callCounts[name] || 0) + 1;
+      if (callCounts[name] <= warmupCount) {
+        // Skip warmup iterations — don't record
+        return;
+      }
       // Store as test annotation — picked up by the custom reporter
       test.info().annotations.push({
         type: 'benchmark',

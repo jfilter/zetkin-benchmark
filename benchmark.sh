@@ -83,6 +83,7 @@ cleanup() {
   echo ""
   echo "Restoring original branch: $ORIGINAL_BRANCH ($ORIGINAL_COMMIT)"
   cd "$REPO"
+  rm -f "$REPO/.env.production"
   git checkout -- . 2>/dev/null
   git checkout "$ORIGINAL_BRANCH" 2>/dev/null || git checkout "$ORIGINAL_COMMIT"
 }
@@ -105,10 +106,14 @@ for ref in "${REFS[@]}"; do
   echo "Installing dependencies..."
   npm install --legacy-peer-deps 2>&1 | tail -1
 
-  # Build
+  # Build (retry once on failure — Google Fonts DNS can be flaky)
   if [[ $SKIP_BUILD -eq 0 ]]; then
     echo "Building..."
-    NODE_ENV=production npm run build
+    if ! NODE_ENV=production npm run build; then
+      echo "Build failed, retrying in 5s..."
+      sleep 5
+      NODE_ENV=production npm run build
+    fi
   else
     echo "Skipping build (--skip-build)"
   fi
@@ -130,9 +135,6 @@ for ref in "${REFS[@]}"; do
   echo ""
   echo "=== Done: $ref ==="
 done
-
-# Clean up .env.production
-rm -f "$REPO/.env.production"
 
 # Compare results
 echo ""

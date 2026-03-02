@@ -6,6 +6,7 @@ import {
   CampaignCallAssignments,
   CampaignEvents,
   CampaignSurveys,
+  generateSurveySubmissions,
   KPD,
   OrgEmails,
   OrgJourneys,
@@ -71,6 +72,15 @@ test.describe('Multi-navigation benchmark', () => {
     moxy.setMock('/v2/orgs/1/area_assignments', 'get', {
       data: { data: [] },
     });
+    // Survey submissions (only mock the first 10 — the page only fetches stats
+    // for surveys that are actually rendered, not all 100)
+    for (const survey of CampaignSurveys.slice(0, 10)) {
+      moxy.setZetkinApiMock(
+        `/orgs/1/surveys/${survey.id}/submissions`,
+        'get',
+        generateSurveySubmissions(survey.id, 5)
+      );
+    }
 
     // People list page
     moxy.setZetkinApiMock('/orgs/1/people/views/1', 'get', AllMembersView);
@@ -91,6 +101,9 @@ test.describe('Multi-navigation benchmark', () => {
     );
 
     for (let i = 0; i < iterations; i++) {
+      // Reset client state between iterations
+      await page.goto('about:blank');
+
       // Step 1: Navigate to projects overview
       const navStart = Date.now();
 
@@ -175,6 +188,13 @@ test.describe('Multi-navigation benchmark', () => {
     moxy.setMock('/v2/orgs/1/area_assignments', 'get', {
       data: { data: [] },
     });
+    for (const survey of CampaignSurveys.slice(0, 10)) {
+      moxy.setZetkinApiMock(
+        `/orgs/1/surveys/${survey.id}/submissions`,
+        'get',
+        generateSurveySubmissions(survey.id, 5)
+      );
+    }
 
     // Initial page load
     await page.goto(appUri + '/organize/1/projects/1');
@@ -188,10 +208,16 @@ test.describe('Multi-navigation benchmark', () => {
       const start = Date.now();
 
       await page.goto(appUri + '/organize/1/projects/1/activities');
-      await page.waitForLoadState('networkidle');
+      await page
+        .locator('text=Deutsche Wohnen')
+        .first()
+        .waitFor({ state: 'visible' });
 
       await page.goto(appUri + '/organize/1/projects/1/archive');
-      await page.waitForLoadState('networkidle');
+      await page
+        .locator('text=Deutsche Wohnen')
+        .first()
+        .waitFor({ state: 'visible' });
 
       await page.goto(appUri + '/organize/1/projects/1');
       await page

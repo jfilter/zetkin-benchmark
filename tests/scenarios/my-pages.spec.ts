@@ -52,6 +52,9 @@ test.describe('My pages benchmark', () => {
     });
 
     for (let i = 0; i < iterations; i++) {
+      // Reset client state (Redux store, router cache) between iterations
+      await page.goto('about:blank');
+
       const start = Date.now();
 
       await page.goto(appUri + '/my/home');
@@ -99,14 +102,19 @@ test.describe('My pages benchmark', () => {
     moxy.setZetkinApiMock('/users/me/memberships', 'get', orgMemberships);
 
     for (let i = 0; i < iterations; i++) {
+      // Reset client state (Redux store, router cache) between iterations
+      await page.goto('about:blank');
+
       const start = Date.now();
 
       await page.goto(appUri + '/my/orgs');
-      // Wait for the tabs and org list to render
+      // Wait for the tabs and the last org in the list to render
       await page
         .locator('role=tab >> text=My organizations')
         .waitFor({ state: 'visible' });
-      await page.waitForLoadState('networkidle');
+      await page
+        .getByText('Organization 15')
+        .waitFor({ state: 'visible' });
 
       const duration = Date.now() - start;
       measure('my-orgs-page-load', duration);
@@ -131,6 +139,7 @@ test.describe('My pages benchmark', () => {
     }));
 
     moxy.setZetkinApiMock('/users/me/memberships', 'get', Memberships);
+    moxy.setZetkinApiMock('/users/me/actions', 'get', allEvents.slice(0, 20));
     moxy.setZetkinApiMock('/users/me/action_responses', 'get', []);
     moxy.setZetkinApiMock('/orgs', 'get', [KPD]);
     // The feed page fetches events per org
@@ -151,12 +160,21 @@ test.describe('My pages benchmark', () => {
     }
 
     for (let i = 0; i < iterations; i++) {
+      // Reset client state (Redux store, router cache) between iterations
+      await page.goto('about:blank');
+
       const start = Date.now();
 
       await page.goto(appUri + '/my/feed');
-      // Wait for the All events tab to be selected
+      // Wait for the tab and page content to fully render
       await page
         .locator('role=tab >> text=All events')
+        .waitFor({ state: 'visible' });
+      // Wait for the event list or empty state to render
+      await page
+        .getByText('Could not find any events')
+        .or(page.locator('a[href*="/o/"]').first())
+        .first()
         .waitFor({ state: 'visible' });
 
       const duration = Date.now() - start;

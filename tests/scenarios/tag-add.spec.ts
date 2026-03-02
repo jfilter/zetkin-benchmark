@@ -40,6 +40,8 @@ test.describe('Tag add benchmark', () => {
       moxy.setZetkinApiMock('/orgs/1/people/1/tags', 'get', []);
       moxy.setZetkinApiMock('/orgs/1/people/1/tags/2', 'put', undefined, 201);
 
+      // Reset client state between iterations
+      await page.goto('about:blank');
       await page.goto(appUri + '/organize/1/people/1');
       const addTagButton = page.locator('text=Add tag');
       await addTagButton.waitFor({ state: 'visible' });
