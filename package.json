@@ -1,0 +1,15 @@
+{
+  "name": "zetkin-benchmark",
+  "version": "1.0.0",
+  "description": "Performance benchmark tool for app.zetkin.org — measures interaction performance across branches",
+  "scripts": {
+    "benchmark": "cross-env NODE_ENV=production playwright test",
+    "compare": "tsx src/compare.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "cross-env": "^7.0.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.0.0"
+  }
+}
