@@ -2,7 +2,18 @@ import { expect } from '@playwright/test';
 
 import test from '../fixtures';
 import {
+  AreaAssignments,
+  CampaignCallAssignments,
+  CampaignEvents,
+  CampaignSurveys,
+  EmailConfigs,
+  EmailThemes,
+  generateEventParticipants,
+  generateEventResponses,
+  generateSurveySubmissions,
   KPD,
+  OrgEmails,
+  OrgTasks,
   ReferendumSignatures,
   RosaLuxemburg,
 } from '../../mock-data';
@@ -25,11 +36,35 @@ test.describe('Form submit benchmark', () => {
     measure,
   }) => {
     moxy.setZetkinApiMock('/orgs/1/campaigns/1', 'get', ReferendumSignatures);
-    moxy.setZetkinApiMock('/orgs/1/campaigns/1/actions', 'get', []);
-    moxy.setZetkinApiMock('/orgs/1/campaigns/1/tasks', 'get', []);
-    moxy.setZetkinApiMock('/orgs/1/call_assignments', 'get', []);
-    moxy.setZetkinApiMock('/orgs/1/surveys', 'get', []);
-    moxy.setZetkinApiMock('/orgs/1/tasks', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/actions', 'get', CampaignEvents);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/tasks', 'get', OrgTasks);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/surveys', 'get', CampaignSurveys);
+    moxy.setZetkinApiMock(
+      '/orgs/1/campaigns/1/call_assignments',
+      'get',
+      CampaignCallAssignments
+    );
+    moxy.setZetkinApiMock('/orgs/1/call_assignments', 'get', CampaignCallAssignments);
+    moxy.setZetkinApiMock('/orgs/1/surveys', 'get', CampaignSurveys);
+    moxy.setZetkinApiMock('/orgs/1/tasks', 'get', OrgTasks);
+    moxy.setZetkinApiMock('/orgs/1/actions', 'get', CampaignEvents);
+    moxy.setZetkinApiMock('/orgs/1/emails', 'get', OrgEmails);
+    moxy.setZetkinApiMock('/orgs/1/email_themes', 'get', EmailThemes);
+    moxy.setZetkinApiMock('/orgs/1/email_configs', 'get', EmailConfigs);
+    moxy.setMock('/v2/orgs/1/area_assignments', 'get', {
+      data: { data: AreaAssignments },
+    });
+    for (const survey of CampaignSurveys) {
+      moxy.setZetkinApiMock(
+        `/orgs/1/surveys/${survey.id}/submissions`,
+        'get',
+        generateSurveySubmissions(survey.id, 5)
+      );
+    }
+    for (const event of CampaignEvents.slice(0, 10)) {
+      moxy.setZetkinApiMock(`/orgs/1/actions/${event.id}/participants`, 'get', generateEventParticipants(event.id, 3));
+      moxy.setZetkinApiMock(`/orgs/1/actions/${event.id}/responses`, 'get', generateEventResponses(event.id, 5));
+    }
     moxy.setZetkinApiMock('/orgs/1/search/person', 'post', [RosaLuxemburg]);
 
     await page.goto(appUri + '/organize/1/projects/1');

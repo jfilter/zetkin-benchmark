@@ -1,5 +1,6 @@
 import test from '../fixtures';
 import {
+  AreaAssignments,
   CampaignCallAssignments,
   CampaignEvents,
   CampaignSurveys,
@@ -48,7 +49,7 @@ test.describe('My pages benchmark', () => {
       CampaignCallAssignments.slice(0, 5)
     );
     moxy.setMock('/v2/users/me/area_assignments', 'get', {
-      data: { data: [] },
+      data: { data: AreaAssignments },
     });
 
     for (let i = 0; i < iterations; i++) {
@@ -100,6 +101,10 @@ test.describe('My pages benchmark', () => {
     }
 
     moxy.setZetkinApiMock('/users/me/memberships', 'get', orgMemberships);
+    // Org avatars (rendered in org list)
+    for (let i = 1; i <= 15; i++) {
+      moxy.setZetkinApiMock(`/orgs/${i}/avatar`, 'get', null, 204);
+    }
 
     for (let i = 0; i < iterations; i++) {
       // Reset client state (Redux store, router cache) between iterations
@@ -140,7 +145,14 @@ test.describe('My pages benchmark', () => {
 
     moxy.setZetkinApiMock('/users/me/memberships', 'get', Memberships);
     moxy.setZetkinApiMock('/users/me/actions', 'get', allEvents.slice(0, 20));
-    moxy.setZetkinApiMock('/users/me/action_responses', 'get', []);
+    // User has signed up for some events
+    const feedResponses = allEvents.slice(0, 8).map((e) => ({
+      action_id: e.id,
+      id: e.id * 10,
+      person: { id: 1, name: 'Rosa Luxemburg' },
+      response_date: '2024-06-01',
+    }));
+    moxy.setZetkinApiMock('/users/me/action_responses', 'get', feedResponses);
     moxy.setZetkinApiMock('/orgs', 'get', [KPD]);
     // The feed page fetches events per org
     for (let orgId = 1; orgId <= 5; orgId++) {

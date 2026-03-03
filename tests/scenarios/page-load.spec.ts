@@ -1,13 +1,22 @@
 import test from '../fixtures';
 import {
+  AreaAssignments,
   CampaignCallAssignments,
   CampaignEvents,
   CampaignSurveys,
+  EmailConfigs,
+  EmailThemes,
   generateSurveySubmissions,
   KPD,
   OrgEmails,
   OrgJourneys,
   OrgTags,
+  OrgTasks,
+  PeopleFields,
+  PersonConnections,
+  SPD,
+  SPDOfficials,
+  SPDSubOrganizations,
   PersonJourneyInstances,
   PersonTags,
   ReferendumSignatures,
@@ -19,6 +28,8 @@ test.describe('Page load benchmark', () => {
   test.beforeEach(({ login, moxy }) => {
     login();
     moxy.setZetkinApiMock('/orgs/1', 'get', KPD);
+    // Clear stale log entries from previous test's async cleanup
+    moxy.clearLog();
   });
 
   test.afterEach(({ moxy }) => {
@@ -34,7 +45,7 @@ test.describe('Page load benchmark', () => {
   }) => {
     moxy.setZetkinApiMock('/orgs/1/campaigns/1', 'get', ReferendumSignatures);
     moxy.setZetkinApiMock('/orgs/1/campaigns/1/actions', 'get', CampaignEvents);
-    moxy.setZetkinApiMock('/orgs/1/campaigns/1/tasks', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/tasks', 'get', OrgTasks);
     moxy.setZetkinApiMock('/orgs/1/campaigns/1/surveys', 'get', CampaignSurveys);
     moxy.setZetkinApiMock(
       '/orgs/1/campaigns/1/call_assignments',
@@ -43,18 +54,16 @@ test.describe('Page load benchmark', () => {
     );
     moxy.setZetkinApiMock('/orgs/1/call_assignments', 'get', CampaignCallAssignments);
     moxy.setZetkinApiMock('/orgs/1/surveys', 'get', CampaignSurveys);
-    moxy.setZetkinApiMock('/orgs/1/tasks', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/tasks', 'get', OrgTasks);
     moxy.setZetkinApiMock('/orgs/1/actions', 'get', CampaignEvents);
     moxy.setZetkinApiMock('/orgs/1/emails', 'get', OrgEmails);
-    moxy.setZetkinApiMock('/orgs/1/email_themes', 'get', []);
-    moxy.setZetkinApiMock('/orgs/1/email_configs', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/email_themes', 'get', EmailThemes);
+    moxy.setZetkinApiMock('/orgs/1/email_configs', 'get', EmailConfigs);
     // API v2 endpoint for area assignments
     moxy.setMock('/v2/orgs/1/area_assignments', 'get', {
-      data: { data: [] },
+      data: { data: AreaAssignments },
     });
-    // Survey submissions (only mock the first 10 — the page only fetches stats
-    // for surveys that are actually rendered, not all 100)
-    for (const survey of CampaignSurveys.slice(0, 10)) {
+    for (const survey of CampaignSurveys) {
       moxy.setZetkinApiMock(
         `/orgs/1/surveys/${survey.id}/submissions`,
         'get',
@@ -84,7 +93,15 @@ test.describe('Page load benchmark', () => {
   }) => {
     moxy.setZetkinApiMock('/orgs/1/people/1', 'get', RosaLuxemburg);
     moxy.setZetkinApiMock('/orgs/1/people/1/tags', 'get', PersonTags);
+    moxy.setZetkinApiMock('/orgs/1/people/1/connections', 'get', PersonConnections);
+    moxy.setZetkinApiMock('/orgs/1/people/1/avatar', 'get', null, 204);
+    // Org 2 needed for PersonConnections
+    moxy.setZetkinApiMock('/orgs/2', 'get', SPD);
+    moxy.setZetkinApiMock('/orgs/2/avatar', 'get', null, 204);
+    moxy.setZetkinApiMock('/orgs/2/officials', 'get', SPDOfficials);
+    moxy.setZetkinApiMock('/orgs/2/sub_organizations', 'get', SPDSubOrganizations);
     moxy.setZetkinApiMock('/orgs/1/people/tags', 'get', OrgTags);
+    moxy.setZetkinApiMock('/orgs/1/people/fields', 'get', PeopleFields);
     moxy.setZetkinApiMock('/orgs/1/tag_groups', 'get', TagGroups);
     moxy.setZetkinApiMock('/orgs/1/journeys', 'get', OrgJourneys);
     moxy.setZetkinApiMock(

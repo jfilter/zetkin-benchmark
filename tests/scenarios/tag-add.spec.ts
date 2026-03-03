@@ -1,5 +1,16 @@
 import test from '../fixtures';
-import { KPD, RosaLuxemburg } from '../../mock-data';
+import {
+  KPD,
+  OrgJourneys,
+  PeopleFields,
+  PersonConnections,
+  PersonJourneyInstances,
+  RosaLuxemburg,
+  SPD,
+  SPDOfficials,
+  SPDSubOrganizations,
+  TagGroups,
+} from '../../mock-data';
 
 const PlaysGuitar = {
   color: null,
@@ -30,10 +41,18 @@ test.describe('Tag add benchmark', () => {
     measure,
   }) => {
     moxy.setZetkinApiMock('/orgs/1/people/1', 'get', RosaLuxemburg);
+    moxy.setZetkinApiMock('/orgs/1/people/1/connections', 'get', PersonConnections);
+    moxy.setZetkinApiMock('/orgs/1/people/1/avatar', 'get', null, 204);
+    // Org 2 needed for PersonConnections
+    moxy.setZetkinApiMock('/orgs/2', 'get', SPD);
+    moxy.setZetkinApiMock('/orgs/2/avatar', 'get', null, 204);
+    moxy.setZetkinApiMock('/orgs/2/officials', 'get', SPDOfficials);
+    moxy.setZetkinApiMock('/orgs/2/sub_organizations', 'get', SPDSubOrganizations);
     moxy.setZetkinApiMock('/orgs/1/people/tags', 'get', [PlaysGuitar]);
-    moxy.setZetkinApiMock('/orgs/1/tag_groups', 'get', []);
-    moxy.setZetkinApiMock('/orgs/1/journeys', 'get', []);
-    moxy.setZetkinApiMock('/orgs/1/people/1/journey_instances', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/people/fields', 'get', PeopleFields);
+    moxy.setZetkinApiMock('/orgs/1/tag_groups', 'get', TagGroups);
+    moxy.setZetkinApiMock('/orgs/1/journeys', 'get', OrgJourneys);
+    moxy.setZetkinApiMock('/orgs/1/people/1/journey_instances', 'get', PersonJourneyInstances);
 
     for (let i = 0; i < iterations; i++) {
       // Reset tags state for each iteration

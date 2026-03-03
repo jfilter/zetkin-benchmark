@@ -1,9 +1,11 @@
 import test from '../fixtures';
 import {
-  KPD,
-  AllMembersView,
   AllMembersColumns,
   AllMembersRows,
+  AllMembersView,
+  KPD,
+  PeopleFields,
+  ViewFolders,
 } from '../../mock-data';
 
 test.describe('List interaction benchmark', () => {
@@ -23,7 +25,9 @@ test.describe('List interaction benchmark', () => {
     iterations,
     measure,
   }) => {
+    moxy.setZetkinApiMock('/orgs/1/people/views', 'get', [AllMembersView]);
     moxy.setZetkinApiMock('/orgs/1/people/views/1', 'get', AllMembersView);
+    moxy.setZetkinApiMock('/orgs/1/people/views/1/access', 'get', { level: 'admin' });
     moxy.setZetkinApiMock(
       '/orgs/1/people/views/1/rows',
       'get',
@@ -34,7 +38,12 @@ test.describe('List interaction benchmark', () => {
       'get',
       AllMembersColumns
     );
-    moxy.setZetkinApiMock('/orgs/1/people/fields', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/people/view_folders', 'get', ViewFolders);
+    moxy.setZetkinApiMock('/orgs/1/people/fields', 'get', PeopleFields);
+    // People avatars (for rendered rows)
+    for (let i = 1; i <= 10; i++) {
+      moxy.setZetkinApiMock(`/orgs/1/people/${i}/avatar`, 'get', null, 204);
+    }
 
     await page.goto(appUri + '/organize/1/people/lists/1');
     await page

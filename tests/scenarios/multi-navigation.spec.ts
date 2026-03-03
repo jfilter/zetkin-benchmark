@@ -3,25 +3,40 @@ import {
   AllMembersColumns,
   AllMembersRows,
   AllMembersView,
+  AreaAssignments,
   CampaignCallAssignments,
   CampaignEvents,
   CampaignSurveys,
+  EmailConfigs,
+  EmailThemes,
+  generateEmailStats,
+  generateEventParticipants,
+  generateEventResponses,
   generateSurveySubmissions,
   KPD,
   OrgEmails,
   OrgJourneys,
   OrgTags,
+  OrgTasks,
+  PeopleFields,
+  PersonConnections,
+  SPD,
+  SPDOfficials,
+  SPDSubOrganizations,
   PersonJourneyInstances,
   PersonTags,
   ReferendumSignatures,
   RosaLuxemburg,
   TagGroups,
+  ViewFolders,
 } from '../../mock-data';
 
 test.describe('Multi-navigation benchmark', () => {
   test.beforeEach(({ login, moxy }) => {
     login();
     moxy.setZetkinApiMock('/orgs/1', 'get', KPD);
+    // Clear stale log entries from previous test's async cleanup
+    moxy.clearLog();
   });
 
   test.afterEach(({ moxy }) => {
@@ -50,13 +65,13 @@ test.describe('Multi-navigation benchmark', () => {
       });
     }
     moxy.setZetkinApiMock('/orgs/1/campaigns', 'get', campaigns);
-    moxy.setZetkinApiMock('/orgs/1/tasks', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/tasks', 'get', OrgTasks);
     moxy.setZetkinApiMock('/orgs/1/people/views', 'get', [AllMembersView]);
 
     // Campaign detail page
     moxy.setZetkinApiMock('/orgs/1/campaigns/1', 'get', ReferendumSignatures);
     moxy.setZetkinApiMock('/orgs/1/campaigns/1/actions', 'get', CampaignEvents);
-    moxy.setZetkinApiMock('/orgs/1/campaigns/1/tasks', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/tasks', 'get', OrgTasks);
     moxy.setZetkinApiMock('/orgs/1/campaigns/1/surveys', 'get', CampaignSurveys);
     moxy.setZetkinApiMock(
       '/orgs/1/campaigns/1/call_assignments',
@@ -67,14 +82,12 @@ test.describe('Multi-navigation benchmark', () => {
     moxy.setZetkinApiMock('/orgs/1/surveys', 'get', CampaignSurveys);
     moxy.setZetkinApiMock('/orgs/1/actions', 'get', CampaignEvents);
     moxy.setZetkinApiMock('/orgs/1/emails', 'get', OrgEmails);
-    moxy.setZetkinApiMock('/orgs/1/email_themes', 'get', []);
-    moxy.setZetkinApiMock('/orgs/1/email_configs', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/email_themes', 'get', EmailThemes);
+    moxy.setZetkinApiMock('/orgs/1/email_configs', 'get', EmailConfigs);
     moxy.setMock('/v2/orgs/1/area_assignments', 'get', {
-      data: { data: [] },
+      data: { data: AreaAssignments },
     });
-    // Survey submissions (only mock the first 10 — the page only fetches stats
-    // for surveys that are actually rendered, not all 100)
-    for (const survey of CampaignSurveys.slice(0, 10)) {
+    for (const survey of CampaignSurveys) {
       moxy.setZetkinApiMock(
         `/orgs/1/surveys/${survey.id}/submissions`,
         'get',
@@ -82,15 +95,34 @@ test.describe('Multi-navigation benchmark', () => {
       );
     }
 
+    // Event participants/responses (rendered on campaign activities page)
+    for (const event of CampaignEvents.slice(0, 10)) {
+      moxy.setZetkinApiMock(`/orgs/1/actions/${event.id}/participants`, 'get', generateEventParticipants(event.id, 3));
+      moxy.setZetkinApiMock(`/orgs/1/actions/${event.id}/responses`, 'get', generateEventResponses(event.id, 5));
+    }
+
     // People list page
+    moxy.setZetkinApiMock('/orgs/1/people/views', 'get', [AllMembersView]);
     moxy.setZetkinApiMock('/orgs/1/people/views/1', 'get', AllMembersView);
     moxy.setZetkinApiMock('/orgs/1/people/views/1/rows', 'get', AllMembersRows);
     moxy.setZetkinApiMock('/orgs/1/people/views/1/columns', 'get', AllMembersColumns);
-    moxy.setZetkinApiMock('/orgs/1/people/fields', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/people/views/1/access', 'get', { level: 'admin' });
+    moxy.setZetkinApiMock('/orgs/1/people/view_folders', 'get', ViewFolders);
+    moxy.setZetkinApiMock('/orgs/1/people/fields', 'get', PeopleFields);
+    // People avatars (for rendered rows)
+    for (let i = 1; i <= 10; i++) {
+      moxy.setZetkinApiMock(`/orgs/1/people/${i}/avatar`, 'get', null, 204);
+    }
 
     // Person detail page
     moxy.setZetkinApiMock('/orgs/1/people/1', 'get', RosaLuxemburg);
     moxy.setZetkinApiMock('/orgs/1/people/1/tags', 'get', PersonTags);
+    moxy.setZetkinApiMock('/orgs/1/people/1/connections', 'get', PersonConnections);
+    // Org 2 needed for PersonConnections
+    moxy.setZetkinApiMock('/orgs/2', 'get', SPD);
+    moxy.setZetkinApiMock('/orgs/2/avatar', 'get', null, 204);
+    moxy.setZetkinApiMock('/orgs/2/officials', 'get', SPDOfficials);
+    moxy.setZetkinApiMock('/orgs/2/sub_organizations', 'get', SPDSubOrganizations);
     moxy.setZetkinApiMock('/orgs/1/people/tags', 'get', OrgTags);
     moxy.setZetkinApiMock('/orgs/1/tag_groups', 'get', TagGroups);
     moxy.setZetkinApiMock('/orgs/1/journeys', 'get', OrgJourneys);
@@ -171,7 +203,7 @@ test.describe('Multi-navigation benchmark', () => {
     moxy.setZetkinApiMock('/orgs', 'get', [KPD]);
     moxy.setZetkinApiMock('/orgs/1/campaigns/1', 'get', ReferendumSignatures);
     moxy.setZetkinApiMock('/orgs/1/campaigns/1/actions', 'get', CampaignEvents);
-    moxy.setZetkinApiMock('/orgs/1/campaigns/1/tasks', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/tasks', 'get', OrgTasks);
     moxy.setZetkinApiMock('/orgs/1/campaigns/1/surveys', 'get', CampaignSurveys);
     moxy.setZetkinApiMock(
       '/orgs/1/campaigns/1/call_assignments',
@@ -182,18 +214,29 @@ test.describe('Multi-navigation benchmark', () => {
     moxy.setZetkinApiMock('/orgs/1/surveys', 'get', CampaignSurveys);
     moxy.setZetkinApiMock('/orgs/1/actions', 'get', CampaignEvents);
     moxy.setZetkinApiMock('/orgs/1/emails', 'get', OrgEmails);
-    moxy.setZetkinApiMock('/orgs/1/email_themes', 'get', []);
-    moxy.setZetkinApiMock('/orgs/1/email_configs', 'get', []);
-    moxy.setZetkinApiMock('/orgs/1/tasks', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/email_themes', 'get', EmailThemes);
+    moxy.setZetkinApiMock('/orgs/1/email_configs', 'get', EmailConfigs);
+    moxy.setZetkinApiMock('/orgs/1/tasks', 'get', OrgTasks);
     moxy.setMock('/v2/orgs/1/area_assignments', 'get', {
-      data: { data: [] },
+      data: { data: AreaAssignments },
     });
-    for (const survey of CampaignSurveys.slice(0, 10)) {
+    for (const survey of CampaignSurveys) {
       moxy.setZetkinApiMock(
         `/orgs/1/surveys/${survey.id}/submissions`,
         'get',
         generateSurveySubmissions(survey.id, 5)
       );
+    }
+
+    // Event participants/responses (activities/archive pages render these)
+    for (const event of CampaignEvents) {
+      moxy.setZetkinApiMock(`/orgs/1/actions/${event.id}/participants`, 'get', generateEventParticipants(event.id, 3));
+      moxy.setZetkinApiMock(`/orgs/1/actions/${event.id}/responses`, 'get', generateEventResponses(event.id, 5));
+    }
+
+    // Email stats (rendered on campaign emails/archive tabs)
+    for (const email of OrgEmails) {
+      moxy.setZetkinApiMock(`/orgs/1/emails/${email.id}/stats`, 'get', generateEmailStats(email.id));
     }
 
     // Initial page load

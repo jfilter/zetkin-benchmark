@@ -5,9 +5,12 @@ import path from 'path';
 import { createServer, Server } from 'http';
 
 import {
+  EmailConfigs,
   KPD,
   Memberships,
+  OrgOfficials,
   RosaLuxemburgUser,
+  SubOrganizations,
 } from '../mock-data';
 
 // Path to the app.zetkin.org repo — set via APP_REPO_PATH env var
@@ -121,8 +124,25 @@ const test = base.extend<BenchmarkFixtures, BenchmarkWorkerFixtures>({
       };
 
       const teardown = () => {
+        const unmocked = rest.log().filter(
+          (e: { mocked: boolean }) => !e.mocked
+        );
         rest.clearLog();
         rest.removeMock();
+        if (unmocked.length > 0) {
+          const unique = [
+            ...new Set(
+              unmocked.map(
+                (e: { method: string; path: string }) =>
+                  `${e.method} ${e.path}`
+              )
+            ),
+          ];
+          throw new Error(
+            `Unmocked API routes (${unique.length}):\n` +
+              unique.map((p: string) => `  - ${p}`).join('\n')
+          );
+        }
       };
 
       start();
@@ -150,6 +170,14 @@ const test = base.extend<BenchmarkFixtures, BenchmarkWorkerFixtures>({
         user: RosaLuxemburgUser,
         factors: ['email_password', 'phone_otp'],
       });
+
+      // Common endpoints needed by most pages
+      moxy.setZetkinApiMock(`/users/${RosaLuxemburgUser.id}/avatar`, 'get', null, 204);
+      moxy.setZetkinApiMock('/orgs/1/avatar', 'get', null, 204);
+      moxy.setZetkinApiMock('/orgs/1/officials', 'get', OrgOfficials);
+      moxy.setZetkinApiMock('/orgs/1/sub_organizations', 'get', SubOrganizations);
+      moxy.setZetkinApiMock('/orgs/1/emails/configs', 'get', EmailConfigs);
+      moxy.setZetkinApiMock(`/users/me/memberships/${KPD.id}`, 'get', Memberships[0]);
     };
     await use(login);
   },
@@ -165,6 +193,14 @@ const test = base.extend<BenchmarkFixtures, BenchmarkWorkerFixtures>({
         user: RosaLuxemburgUser,
         factors: ['email_password', 'phone_otp'],
       });
+
+      // Common endpoints needed by most pages
+      moxy.setZetkinApiMock(`/users/${RosaLuxemburgUser.id}/avatar`, 'get', null, 204);
+      moxy.setZetkinApiMock('/orgs/1/avatar', 'get', null, 204);
+      moxy.setZetkinApiMock('/orgs/1/officials', 'get', OrgOfficials);
+      moxy.setZetkinApiMock('/orgs/1/sub_organizations', 'get', SubOrganizations);
+      moxy.setZetkinApiMock('/orgs/1/emails/configs', 'get', EmailConfigs);
+      moxy.setZetkinApiMock(`/users/me/memberships/${KPD.id}`, 'get', Memberships[0]);
 
       // Create encrypted iron-session cookie for App Router middleware
       const sessionData = {
