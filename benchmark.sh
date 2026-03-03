@@ -5,14 +5,21 @@ set -euo pipefail
 #
 # Usage:
 #   ./benchmark.sh --repo <path> --refs <ref1> <ref2> [ref3...]
-#   ./benchmark.sh --repo ~/code/app.zetkin.org --refs main feat/react-compiler
+#   ./benchmark.sh --repo <path> --experiment <name>
+#
+# Examples:
+#   ./benchmark.sh --repo ~/code/app.zetkin.org --refs main perf/next15-05-static-routes
+#   ./benchmark.sh --repo ~/code/app.zetkin.org --experiment next15
+#   ./benchmark.sh --repo ~/code/app.zetkin.org --experiment next15 --scenario my-pages
 #
 # Options:
-#   --repo <path>       Path to app.zetkin.org repo (required)
-#   --refs <ref...>     Branch names or commit SHAs to compare (required, min 2)
-#   --iterations <n>    Runs per scenario (default: 5)
-#   --scenario <name>   Run only tests matching this name (optional)
-#   --skip-build        Skip the build step (use existing .next build)
+#   --repo <path>            Path to app.zetkin.org repo (required)
+#   --refs <ref...>          Branch names or commit SHAs to compare
+#   --experiment <name>      Use a predefined set of refs (see experiments/)
+#   --iterations <n>         Runs per scenario (default: 5)
+#   --scenario <name>        Run only tests matching this name (optional)
+#   --skip-build             Skip the build step (use existing .next build)
+#   --list-experiments       List available experiment presets
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO=""
@@ -20,6 +27,29 @@ REFS=()
 ITERATIONS=5
 SCENARIO=""
 SKIP_BUILD=0
+EXPERIMENT=""
+
+# --- Experiment presets ---
+# Each experiment defines a set of refs to benchmark.
+# Add new experiments here as functions named experiment_<name>.
+experiment_next15() {
+  REFS=(
+    main
+    perf/next15-01-baseline
+    perf/next15-02-compiler
+    perf/next15-03-locale
+    perf/next15-04-compiler+locale
+    perf/next15-05-static-routes
+  )
+}
+
+list_experiments() {
+  echo "Available experiments:"
+  echo ""
+  echo "  next15    Next.js 15 migration (6 branches: main + 5 perf variants)"
+  echo ""
+  echo "See experiments/ folder for detailed documentation."
+}
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -34,6 +64,14 @@ while [[ $# -gt 0 ]]; do
         REFS+=("$1")
         shift
       done
+      ;;
+    --experiment)
+      EXPERIMENT="$2"
+      shift 2
+      ;;
+    --list-experiments)
+      list_experiments
+      exit 0
       ;;
     --iterations)
       ITERATIONS="$2"
@@ -54,16 +92,36 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Resolve experiment to refs
+if [[ -n "$EXPERIMENT" ]]; then
+  experiment_fn="experiment_${EXPERIMENT}"
+  if declare -f "$experiment_fn" > /dev/null 2>&1; then
+    if [[ ${#REFS[@]} -gt 0 ]]; then
+      echo "Error: --experiment and --refs are mutually exclusive"
+      exit 1
+    fi
+    $experiment_fn
+    echo "Experiment: $EXPERIMENT (${#REFS[@]} refs)"
+  else
+    echo "Error: unknown experiment '$EXPERIMENT'"
+    echo ""
+    list_experiments
+    exit 1
+  fi
+fi
+
 # Validate
 if [[ -z "$REPO" ]]; then
   echo "Error: --repo is required"
   echo "Usage: ./benchmark.sh --repo <path> --refs <ref1> <ref2>"
+  echo "   or: ./benchmark.sh --repo <path> --experiment <name>"
   exit 1
 fi
 
 if [[ ${#REFS[@]} -lt 1 ]]; then
-  echo "Error: --refs requires at least 1 ref"
+  echo "Error: --refs or --experiment is required"
   echo "Usage: ./benchmark.sh --repo <path> --refs <ref1> <ref2>"
+  echo "   or: ./benchmark.sh --repo <path> --experiment <name>"
   exit 1
 fi
 
