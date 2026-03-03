@@ -6,6 +6,8 @@ import {
   CampaignSurveys,
   EmailConfigs,
   EmailThemes,
+  generateEventParticipants,
+  generateEventResponses,
   generateSurveySubmissions,
   KPD,
   OrgEmails,
@@ -69,6 +71,11 @@ test.describe('Page load benchmark', () => {
         'get',
         generateSurveySubmissions(survey.id, 5)
       );
+    }
+    // Event participants/responses (rendered on campaign page)
+    for (const event of CampaignEvents) {
+      moxy.setZetkinApiMock(`/orgs/1/actions/${event.id}/participants`, 'get', generateEventParticipants(event.id, 3));
+      moxy.setZetkinApiMock(`/orgs/1/actions/${event.id}/responses`, 'get', generateEventResponses(event.id, 5));
     }
 
     for (let i = 0; i < iterations; i++) {
