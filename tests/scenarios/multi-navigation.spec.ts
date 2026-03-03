@@ -96,7 +96,7 @@ test.describe('Multi-navigation benchmark', () => {
     }
 
     // Event participants/responses (rendered on campaign activities page)
-    for (const event of CampaignEvents.slice(0, 10)) {
+    for (const event of CampaignEvents) {
       moxy.setZetkinApiMock(`/orgs/1/actions/${event.id}/participants`, 'get', generateEventParticipants(event.id, 3));
       moxy.setZetkinApiMock(`/orgs/1/actions/${event.id}/responses`, 'get', generateEventResponses(event.id, 5));
     }
