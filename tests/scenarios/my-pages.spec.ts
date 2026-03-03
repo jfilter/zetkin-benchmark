@@ -15,6 +15,8 @@ test.describe('My pages benchmark', () => {
   test.beforeEach(async ({ loginWithCookie, moxy }) => {
     await loginWithCookie();
     moxy.setZetkinApiMock('/orgs/1', 'get', KPD);
+    // Clear stale log entries from previous test's async cleanup
+    moxy.clearLog();
   });
 
   test.afterEach(({ moxy }) => {
@@ -33,10 +35,11 @@ test.describe('My pages benchmark', () => {
       ...e,
       organization: KPD,
     }));
-    // Events the user signed up for
+    // Events the user signed up for (the app expects { action: ZetkinEvent } objects)
     const myResponses = myEvents.slice(0, 8).map((e) => ({
       action_id: e.id,
       id: e.id * 10,
+      action: e,
       person: { id: 1, name: 'Rosa Luxemburg' },
       response_date: '2024-06-01',
     }));
@@ -51,6 +54,12 @@ test.describe('My pages benchmark', () => {
     moxy.setMock('/v2/users/me/area_assignments', 'get', {
       data: { data: AreaAssignments },
     });
+
+    // The HomeLayout has tabs linking to /my/feed which may trigger
+    // prefetch of the getAllEvents RPC. Mock its dependencies.
+    moxy.setZetkinApiMock('/orgs', 'get', [KPD]);
+    moxy.setZetkinApiMock('/orgs/1/actions', 'get', myEvents);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1', 'get', ReferendumSignatures);
 
     for (let i = 0; i < iterations; i++) {
       // Reset client state (Redux store, router cache) between iterations
@@ -145,10 +154,11 @@ test.describe('My pages benchmark', () => {
 
     moxy.setZetkinApiMock('/users/me/memberships', 'get', Memberships);
     moxy.setZetkinApiMock('/users/me/actions', 'get', allEvents.slice(0, 20));
-    // User has signed up for some events
+    // User has signed up for some events (the app expects { action: ZetkinEvent } objects)
     const feedResponses = allEvents.slice(0, 8).map((e) => ({
       action_id: e.id,
       id: e.id * 10,
+      action: e,
       person: { id: 1, name: 'Rosa Luxemburg' },
       response_date: '2024-06-01',
     }));

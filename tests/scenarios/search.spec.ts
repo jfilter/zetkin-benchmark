@@ -23,6 +23,8 @@ test.describe('Search benchmark', () => {
   test.beforeEach(({ login, moxy }) => {
     login();
     moxy.setZetkinApiMock('/orgs/1', 'get', KPD);
+    // Clear stale log entries from previous test's async cleanup
+    moxy.clearLog();
   });
 
   test.afterEach(({ moxy }) => {

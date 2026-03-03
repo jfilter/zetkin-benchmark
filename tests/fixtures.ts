@@ -61,7 +61,20 @@ interface BenchmarkWorkerFixtures {
 const test = base.extend<BenchmarkFixtures, BenchmarkWorkerFixtures>({
   appUri: [
     async ({ moxy }, use) => {
+      // Set required env vars explicitly so tests are self-contained
+      // (not reliant on .env.production existing on disk)
       process.env.ZETKIN_API_PORT = moxy.port.toString();
+      process.env.ZETKIN_API_HOST = process.env.ZETKIN_API_HOST || 'localhost';
+      process.env.ZETKIN_API_DOMAIN =
+        process.env.ZETKIN_API_DOMAIN || 'dev.zetkin.org';
+      process.env.ZETKIN_CLIENT_ID =
+        process.env.ZETKIN_CLIENT_ID || 'a0db63a12bae45ff83d12de70c8992c0';
+      process.env.ZETKIN_CLIENT_SECRET =
+        process.env.ZETKIN_CLIENT_SECRET ||
+        'MWQyZmE2M2UtMzM3Yi00ODUyLWI2NGMtOWY5YTY5NTY3YjU5';
+      process.env.ZETKIN_USE_TLS = process.env.ZETKIN_USE_TLS || '0';
+      process.env.SESSION_PASSWORD =
+        process.env.SESSION_PASSWORD || SESSION_PASSWORD;
 
       // Next.js resolves paths (like src/locale) relative to CWD,
       // so we must change to the app repo directory

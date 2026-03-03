@@ -498,8 +498,15 @@ export const ViewFolders = [
 
 // --- Person connections ---
 
-// Connection to another org — tests using this must also mock /orgs/2
+// The person must be connected to the main org (1) so that PersonOrganizationsCard
+// can build a valid tree. Additional connections to other orgs are fine.
 export const PersonConnections = [
+  {
+    follow: true,
+    organization: { id: KPD.id, title: KPD.title },
+    profile: { id: 1, name: 'Rosa Luxemburg' },
+    role: 'admin',
+  },
   {
     follow: false,
     organization: { id: 2, title: 'Sozialdemokratische Partei Deutschlands' },
@@ -588,17 +595,21 @@ export const EmailConfigs = [
 export const AreaAssignments = [
   {
     id: 1,
-    organization: { id: KPD.id },
+    organization_id: KPD.id,
+    project_id: 1,
     title: 'Canvassing District Mitte',
-    description: 'Door-to-door in central Berlin',
+    instructions: 'Door-to-door in central Berlin',
+    reporting_level: 'household' as const,
     start_date: '2024-06-01',
     end_date: '2024-12-31',
   },
   {
     id: 2,
-    organization: { id: KPD.id },
+    organization_id: KPD.id,
+    project_id: 1,
     title: 'Canvassing District Kreuzberg',
-    description: 'Community outreach in Kreuzberg',
+    instructions: 'Community outreach in Kreuzberg',
+    reporting_level: 'location' as const,
     start_date: '2024-06-01',
     end_date: null,
   },
