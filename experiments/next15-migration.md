@@ -17,11 +17,17 @@ unless noted.
 | # | Branch | Base | What it adds |
 |---|--------|------|--------------|
 | — | `main` | — | Next.js 14 baseline (control) |
+| | | | |
+| **Next 15 variants** | | | |
 | 01 | `perf/next15-01-baseline` | `main` | Next 15 upgrade, no optimizations |
 | 02 | `perf/next15-02-compiler` | 01 | Enables React Compiler via babel plugin |
 | 03 | `perf/next15-03-locale` | 01 | Moves i18n from server props to client-side cached fetch (no compiler) |
 | 04 | `perf/next15-04-compiler+locale` | 02 + 03 | Both React Compiler and locale optimization |
 | 05 | `perf/next15-05-static-routes` | 04 | Removes dynamic APIs from /my routes → Full Route Cache |
+| | | | |
+| **Next 14 variants** (same optimizations applied to N14 for comparison) | | | |
+| 01 | `perf/next14-01-locale` | `main` | Locale optimization only (no N15 upgrade) |
+| 02 | `perf/next14-02-locale+static` | N14-01 | Locale + static routes (no N15 upgrade) |
 
 ### Old branch names (for matching historical result files)
 
@@ -32,8 +38,12 @@ unless noted.
 | `perf/next15-03-locale` | `feat/next15-locale-only` |
 | `perf/next15-04-compiler+locale` | `feat/locale-optimization` |
 | `perf/next15-05-static-routes` | `feat/my-pages-static` |
+| `perf/next14-01-locale` | *(new)* |
+| `perf/next14-02-locale+static` | *(new)* |
 
 ## Results (latest run: 2026-03-03)
+
+> **Note**: N14 variant results pending — run `--experiment next15` to populate.
 
 All numbers are median ms across 5 measured iterations (3 warmup discarded).
 

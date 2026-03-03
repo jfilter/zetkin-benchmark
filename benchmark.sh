@@ -35,6 +35,8 @@ EXPERIMENT=""
 experiment_next15() {
   REFS=(
     main
+    perf/next14-01-locale
+    perf/next14-02-locale+static
     perf/next15-01-baseline
     perf/next15-02-compiler
     perf/next15-03-locale
@@ -46,7 +48,7 @@ experiment_next15() {
 list_experiments() {
   echo "Available experiments:"
   echo ""
-  echo "  next15    Next.js 15 migration (6 branches: main + 5 perf variants)"
+  echo "  next15    Next.js 15 migration (8 branches: main + 2 N14 variants + 5 N15 variants)"
   echo ""
   echo "See experiments/ folder for detailed documentation."
 }
