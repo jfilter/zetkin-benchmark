@@ -51,6 +51,75 @@ manual `useMemo`/`useCallback`/`React.memo`.
 **Next 15 baseline** (N15-01): Large migration (364 files) including Next.js
 14.2 -> 15.5, React 18 -> 19, MUI v7, Redux Toolkit v2, async request APIs.
 
+### Trade-offs
+
+Both the locale and static-routes optimizations have minimal practical drawbacks,
+largely because app.zetkin.org is already a client-first application. The `/my/*`
+pages render a server-side shell, then client components do all data fetching via
+Redux hooks (`useMyActivities()`, `useUserMemberships()`, etc.) with React
+Suspense boundaries. Translations are consumed client-side via `react-intl`'s
+`useMessages()` / `useIntl()` hooks (~1000+ call sites). The server was not
+contributing meaningful data to these pages — only blocking them.
+
+**Client-side locale loading:**
+- On first page load, translations are fetched asynchronously. During the brief
+  window before the fetch completes, `react-intl` falls back to the English
+  `defaultMessage` defined on every `<Msg>` component. Since English is the
+  default language, this is imperceptible in practice — there is no flash of
+  missing translation keys.
+- The one cached fetch per session replaces ~146 KB of translation data that was
+  previously embedded in every `__NEXT_DATA__` SSR response. This is a net
+  reduction in bandwidth, not an increase.
+- SEO is unaffected: the `/my/*` pages are `noindex`, and all translated content
+  was already rendered client-side via hooks anyway.
+
+**Static /my routes:**
+- Auth is not weakened in practice. The removed `redirectIfLoginNeeded()` did
+  three things: (1) called `/api/session` to check `session.level`, (2) called
+  `/api/users/me` to check `user.is_verified`, and (3) redirected to `/login` or
+  `/verify` accordingly (~700ms total for the two API calls). All three are
+  covered by other mechanisms:
+  - **Unauthenticated users** are already redirected by `middleware.ts`, which
+    checks the `zsid` session cookie before any page renders.
+  - **Unverified users** (`!user.is_verified`): the user object is available
+    client-side via the `useUser()` hook (from `UserContext`), so a client-side
+    redirect to `/verify` can replace the server-side check.
+  - **Invalid/expired sessions** (valid cookie but expired server-side): any
+    client-side API call will return 401. The app already handles this — e.g.
+    the `Heartbeat` component redirects to `/login` on 401 errors.
+  - The only behavioral difference is *timing*: the server-side check redirected
+    before rendering the page shell, while client-side checks redirect after the
+    shell renders and an API call fails. For logged-out users, middleware catches
+    it before either would run.
+- Dynamic `generateMetadata()` in the my-layout only set tab-specific page
+  titles on `noindex` pages. A static metadata export is sufficient.
+- No server-fetched data is lost. The pages already fetched all their data
+  client-side via Redux; the server-side `headers()` calls and user fetch only
+  existed for auth and locale — both now handled elsewhere.
+
+**Why not switch to a Next.js-native i18n library (e.g. next-intl)?**
+
+A library like `next-intl` offers first-class App Router and Server Component
+support, which might seem like a cleaner solution than the custom client-side
+locale loading. However, it's not a good fit here:
+
+- The app is deeply coupled to `react-intl` (v7). A custom abstraction layer —
+  `useMessages()` hook, `<Msg>` component, type-safe `makeMessages()` message
+  definitions — is used across ~1000 call sites in 27 feature modules. Swapping
+  the underlying library would require touching all of them.
+- `next-intl` defaults to URL-based locale routing (`/en/my/home`, `/sv/my/home`).
+  The app determines language from `user.lang` (stored in the API) or the
+  browser's `Accept-Language` header, with no locale segment in the URL.
+  Adopting URL-based routing would be a paradigm shift for the whole app.
+- `next-intl`'s main selling point — translations available in Server Components
+  without client JS — doesn't help here. All translated content is already
+  rendered in `'use client'` components. The only server-side translation use was
+  `generateMetadata()` page titles, which the static-routes optimization made
+  static anyway.
+- The custom locale optimization is a ~120-line change that fully solves the
+  performance problem. A library migration would be weeks of work for the same
+  result.
+
 ## Results (run: 2026-03-04)
 
 All 88/88 tests passing across all 8 branches. Values are **median ms** across
