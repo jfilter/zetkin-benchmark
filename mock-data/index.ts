@@ -496,6 +496,48 @@ export const ViewFolders = [
   { id: 3, organization: KPD, parent: { id: 1 }, title: 'Regional Lists' },
 ];
 
+// --- Large view browser data (for lists overview benchmarks) ---
+
+const viewNames = [
+  'Members', 'Volunteers', 'Donors', 'Activists', 'Supporters',
+  'Newsletter', 'Event attendees', 'Phone bankers', 'Canvassers', 'Organizers',
+  'Board members', 'Committee', 'Delegates', 'Interns', 'Alumni',
+  'New signups', 'Lapsed members', 'High-value', 'At-risk', 'Prospects',
+];
+
+const folderNames = [
+  'Campaigns', 'Regional', 'Demographics', 'Outreach', 'Internal',
+  'Archive', 'Fundraising', 'Events', 'Training', 'Committees',
+];
+
+function generateViewBrowserFolders(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: 100 + i,
+    organization: KPD,
+    parent: null,
+    title: `${folderNames[i % folderNames.length]} ${Math.floor(i / folderNames.length) + 1}`,
+  }));
+}
+
+function generateViewBrowserViews(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    content_query: null,
+    created: '2021-11-21T12:53:15',
+    description: `View ${i + 1}`,
+    folder: null,
+    id: 200 + i,
+    organization: KPD,
+    owner: {
+      id: RosaLuxemburg.id,
+      name: RosaLuxemburg.first_name + ' ' + RosaLuxemburg.last_name,
+    },
+    title: `${viewNames[i % viewNames.length]} ${Math.floor(i / viewNames.length) + 1}`,
+  }));
+}
+
+export const ManyViewFolders = generateViewBrowserFolders(20);
+export const ManyViews = generateViewBrowserViews(80);
+
 // --- Person connections ---
 
 // The person must be connected to the main org (1) so that PersonOrganizationsCard
