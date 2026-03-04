@@ -51,18 +51,6 @@ manual `useMemo`/`useCallback`/`React.memo`.
 **Next 15 baseline** (N15-01): Large migration (364 files) including Next.js
 14.2 -> 15.5, React 18 -> 19, MUI v7, Redux Toolkit v2, async request APIs.
 
-### Old branch names (for matching historical result files)
-
-| New name | Old name |
-|----------|----------|
-| `perf/next15-01-baseline` | `feat/next15-no-compiler` |
-| `perf/next15-02-compiler` | `feat/react-compiler` |
-| `perf/next15-03-locale` | `feat/next15-locale-only` |
-| `perf/next15-04-compiler+locale` | `feat/locale-optimization` |
-| `perf/next15-05-static-routes` | `feat/my-pages-static` |
-| `perf/next14-01-locale` | *(new)* |
-| `perf/next14-02-locale+static` | *(new)* |
-
 ## Results (run: 2026-03-04)
 
 All 88/88 tests passing across all 8 branches. Values are **median ms** across
