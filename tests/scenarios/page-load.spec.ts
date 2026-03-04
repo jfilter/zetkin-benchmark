@@ -117,6 +117,7 @@ test.describe('Page load benchmark', () => {
       PersonJourneyInstances
     );
     moxy.setZetkinApiMock('/orgs/1/campaigns/1/call_assignments', 'get', CampaignCallAssignments);
+    moxy.setZetkinApiMock('/orgs/1/emails', 'get', OrgEmails);
 
     for (let i = 0; i < iterations; i++) {
       // Reset client state (Redux store, router cache) between iterations

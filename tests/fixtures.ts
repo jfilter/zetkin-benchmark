@@ -154,18 +154,8 @@ function createMockServer(port: number) {
     },
 
     teardown: () => {
-      const unmocked = requestLog.filter((e) => !e.mocked);
       requestLog = [];
       mocks.clear();
-      if (unmocked.length > 0) {
-        const unique = [
-          ...new Set(unmocked.map((e) => `${e.method} ${e.path}`)),
-        ];
-        throw new Error(
-          `Unmocked API routes (${unique.length}):\n` +
-            unique.map((p) => `  - ${p}`).join('\n')
-        );
-      }
     },
   };
 
@@ -182,6 +172,8 @@ interface BenchmarkFixtures {
   iterations: number;
   /** Record a benchmark measurement */
   measure: (name: string, durationMs: number) => void;
+  /** Automatically provided — fails test immediately on unmocked API routes */
+  _failOnUnmocked: void;
 }
 
 interface BenchmarkWorkerFixtures {
@@ -348,6 +340,27 @@ const test = base.extend<BenchmarkFixtures, BenchmarkWorkerFixtures>({
     };
     await use(loginWithCookie);
   },
+
+  _failOnUnmocked: [
+    async ({ page, moxy }, use) => {
+      const unmocked = new Set<string>();
+      page.on('response', (response) => {
+        const url = new URL(response.url());
+        if (url.port === String(moxy.port) && response.status() === 404) {
+          unmocked.add(`${response.request().method()} ${url.pathname}`);
+        }
+      });
+      await use();
+      if (unmocked.size > 0) {
+        const routes = [...unmocked];
+        throw new Error(
+          `Unmocked API routes (${routes.length}):\n` +
+            routes.map((p) => `  - ${p}`).join('\n')
+        );
+      }
+    },
+    { auto: true },
+  ],
 
   iterations: async ({}, use) => {
     const measured = parseInt(process.env.BENCH_ITERATIONS || '5', 10);
