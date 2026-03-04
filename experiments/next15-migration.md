@@ -122,7 +122,7 @@ locale loading. However, it's not a good fit here:
 
 ## Results (run: 2026-03-04)
 
-All 88/88 tests passing across all 8 branches. Values are **median ms** across
+All 96/96 tests passing across all 8 branches. Values are **median ms** across
 5 measured iterations (3 warmup discarded).
 
 ### Page loads (median ms)
@@ -155,6 +155,7 @@ All 88/88 tests passing across all 8 branches. Values are **median ms** across
 | list-select | 42 | 44 | 42 | 42 | 42 | 43 | 42 | 42 |
 | search | 789 | 792 | 790 | 788 | 788 | 796 | 788 | 787 |
 | tag-add | 97 | 342 | 340 | 320 | 335 | 350 | 340 | 333 |
+| view-browser-sort | 198 | 182 | 184 | 181 | 75 | 179 | 72 | 75 |
 
 ### Raw measurements (all 5 iterations)
 
@@ -181,6 +182,7 @@ All 88/88 tests passing across all 8 branches. Values are **median ms** across
 | list-select | 42 | 45 | 41 | 45 | 42 | 42 |
 | search | 786 | 787 | 789 | 792 | 790 | 789 |
 | tag-add | 306 | 90 | 97 | 80 | 331 | 97 |
+| view-browser-sort-title | 210 | 201 | 195 | 198 | 186 | 198 |
 
 #### perf/next14-01-locale
 
@@ -202,6 +204,7 @@ All 88/88 tests passing across all 8 branches. Values are **median ms** across
 | list-select | 43 | 76 | 43 | 60 | 44 | 44 |
 | search | 794 | 790 | 789 | 792 | 793 | 792 |
 | tag-add | 325 | 342 | 351 | 78 | 343 | 342 |
+| view-browser-sort-title | 182 | 178 | 182 | 185 | 190 | 182 |
 
 #### perf/next14-02-locale+static
 
@@ -223,6 +226,7 @@ All 88/88 tests passing across all 8 branches. Values are **median ms** across
 | list-select | 42 | 42 | 44 | 42 | 43 | 42 |
 | search | 789 | 791 | 792 | 790 | 789 | 790 |
 | tag-add | 73 | 344 | 344 | 340 | 332 | 340 |
+| view-browser-sort-title | 207 | 194 | 183 | 184 | 178 | 184 |
 
 #### perf/next15-01-baseline
 
@@ -244,6 +248,7 @@ All 88/88 tests passing across all 8 branches. Values are **median ms** across
 | list-select | 41 | 42 | 43 | 41 | 43 | 42 |
 | search | 788 | 791 | 788 | 786 | 788 | 788 |
 | tag-add | 91 | 320 | 343 | 357 | 317 | 320 |
+| view-browser-sort-title | 170 | 184 | 181 | 167 | 186 | 181 |
 
 #### perf/next15-02-compiler
 
@@ -265,6 +270,7 @@ All 88/88 tests passing across all 8 branches. Values are **median ms** across
 | list-select | 42 | 43 | 42 | 42 | 41 | 42 |
 | search | 794 | 788 | 792 | 784 | 786 | 788 |
 | tag-add | 335 | 345 | 334 | 340 | 328 | 335 |
+| view-browser-sort-title | 86 | 79 | 75 | 65 | 57 | 75 |
 
 #### perf/next15-03-locale
 
@@ -286,6 +292,7 @@ All 88/88 tests passing across all 8 branches. Values are **median ms** across
 | list-select | 62 | 42 | 42 | 43 | 43 | 43 |
 | search | 803 | 795 | 796 | 797 | 792 | 796 |
 | tag-add | 344 | 330 | 354 | 350 | 361 | 350 |
+| view-browser-sort-title | 201 | 178 | 179 | 174 | 182 | 179 |
 
 #### perf/next15-04-compiler+locale
 
@@ -307,6 +314,7 @@ All 88/88 tests passing across all 8 branches. Values are **median ms** across
 | list-select | 42 | 42 | 43 | 41 | 43 | 42 |
 | search | 788 | 788 | 786 | 787 | 795 | 788 |
 | tag-add | 340 | 359 | 335 | 310 | 355 | 340 |
+| view-browser-sort-title | 83 | 72 | 64 | 77 | 63 | 72 |
 
 #### perf/next15-05-static-routes
 
@@ -328,6 +336,7 @@ All 88/88 tests passing across all 8 branches. Values are **median ms** across
 | list-select | 42 | 41 | 43 | 41 | 43 | 42 |
 | search | 790 | 787 | 789 | 786 | 787 | 787 |
 | tag-add | 334 | 331 | 333 | 307 | 340 | 333 |
+| view-browser-sort-title | 75 | 62 | 79 | 79 | 64 | 75 |
 
 </details>
 
@@ -372,16 +381,31 @@ Removing all dynamic APIs (`next15-05-static-routes`) makes routes static:
 - **my-orgs**: 842ms -> 83ms (faster than main's 112ms)
 - **my-feed**: 839ms -> 350ms (back to main's 369ms)
 
-### 4. React Compiler halves form-submit time
+### 4. React Compiler delivers large gains on render-heavy interactions
 
-The React Compiler (`next15-02-compiler`, `next15-04-compiler+locale`)
-consistently delivers ~45% improvement on form-submit interactions:
+The React Compiler (`next15-02-compiler`, `next15-04-compiler+locale`,
+`next15-05-static-routes`) consistently accelerates interactions dominated by
+React re-render work:
 
-- **form-submit**: 81ms -> 52ms (N15-04), 66ms (N15-02)
+- **view-browser-sort**: 181ms -> 72ms (N15-04), 75ms (N15-02, N15-05) — **-62%**
+- **form-submit**: 81ms -> 52ms (N15-04), 66ms (N15-02) — **-36%**
 
-This improvement is consistent across all compiler variants.
-It reflects faster React re-renders after state mutations due to automatic
-memoization.
+Without the compiler, all branches (N14 and N15) cluster around 180-198ms for
+sorting the 100-row non-virtualized DataGrid. With it, all compiler branches
+drop to 72-75ms. The signal is unambiguous: the improvement comes entirely from
+the compiler's automatic memoization, not from any other N15 change.
+
+**Why the sort scenario shows such a large effect:** The ViewBrowser page renders
+a non-virtualized MUI DataGridPro with `autoHeight`, meaning all 100 rows (80
+views + 20 folders) are in the DOM simultaneously. Clicking the "Title" column
+header triggers a React state change (`setSortModel`), which re-sorts the rows
+array inside the render function and causes every row + cell component to
+re-render. Without memoization, each render recreates `renderCell` callback
+closures and the custom `BrowserRow` slot component, forcing React to diff and
+update all 100 rows. The React Compiler auto-memoizes these callbacks and
+components, allowing React to skip re-rendering rows whose props haven't
+actually changed — effectively giving the component `React.memo` + `useCallback`
+behavior for free.
 
 ### 5. Client-side interactions are otherwise identical
 
@@ -402,6 +426,7 @@ This branch resolves all regressions while retaining Next 15 benefits:
 - All page loads at or better than `main`
 - My-pages fully fixed (my-orgs 83ms vs main's 112ms)
 - Navigation performance competitive with main (nav-full 629ms vs 671ms)
+- View browser sort 62% faster (75ms vs 198ms, from React Compiler)
 - Form-submit 16% faster (68ms vs 81ms, from React Compiler)
 - Rapid tab switching fastest (533ms vs main's 699ms)
 
