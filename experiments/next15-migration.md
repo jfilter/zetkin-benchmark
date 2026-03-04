@@ -356,7 +356,14 @@ but leaves my-home at 845ms.
 ## How to reproduce
 
 ```bash
+# 1. Fetch the perf branches (they live on the jf fork)
+cd ~/code/app.zetkin.org
+git remote add jf git@github.com:jfilter/app.zetkin.org.git  # skip if already added
+git fetch jf 'refs/heads/perf/*:refs/heads/perf/*'
+
+# 2. Run benchmarks
 cd ~/code/zetkin-benchmark
+npm install
 
 # Run all branches (experiment preset)
 ./benchmark.sh --repo ~/code/app.zetkin.org --experiment next15
