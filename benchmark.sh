@@ -166,8 +166,9 @@ for ref in "${REFS[@]}"; do
   echo "Installing dependencies..."
   npm ci --legacy-peer-deps 2>&1 | tail -1
 
-  # Build (retry once on failure — Google Fonts DNS can be flaky)
+  # Build (clean .next cache to avoid stale artifacts between branches)
   if [[ $SKIP_BUILD -eq 0 ]]; then
+    rm -rf "$REPO/.next"
     echo "Building..."
     if ! NODE_ENV=production npm run build; then
       echo "Build failed, retrying in 5s..."
@@ -178,8 +179,9 @@ for ref in "${REFS[@]}"; do
     echo "Skipping build (--skip-build)"
   fi
 
-  # Run benchmark tests
+  # Run benchmark tests (clean test artifacts from previous ref)
   cd "$SCRIPT_DIR"
+  rm -rf test-results
 
   BENCH_ARGS=()
   if [[ -n "$SCENARIO" ]]; then
