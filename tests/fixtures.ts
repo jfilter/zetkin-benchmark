@@ -17,11 +17,11 @@ import {
 const APP_REPO_PATH =
   process.env.APP_REPO_PATH || path.resolve(__dirname, '../../app.zetkin.org');
 
-// Use the app's own next and moxy packages to avoid version mismatches
+// Use the app's own next and express packages to avoid version mismatches
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const next = require(path.join(APP_REPO_PATH, 'node_modules/next'));
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const moxy = require(path.join(APP_REPO_PATH, 'node_modules/moxy')).default;
+const express = require(path.join(APP_REPO_PATH, 'node_modules/express'));
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { sealData } = require(path.join(
   APP_REPO_PATH,
@@ -29,6 +29,150 @@ const { sealData } = require(path.join(
 ));
 
 const SESSION_PASSWORD = 'thisispasswordandshouldbelongerthan32characters';
+
+// ---------------------------------------------------------------------------
+// Fast mock server: Express + Map (O(1) lookups instead of moxy's O(n) array)
+// ---------------------------------------------------------------------------
+interface MockResponse {
+  status: number;
+  body: string; // pre-serialized JSON for zero-cost serving
+}
+
+interface LogEntry {
+  timestamp: Date;
+  method: string;
+  path: string;
+  mocked: boolean;
+  data?: unknown;
+}
+
+function createMockServer(port: number) {
+  const mocks = new Map<string, MockResponse>();
+  let requestLog: LogEntry[] = [];
+
+  const mockKey = (method: string, path: string) =>
+    `${method.toUpperCase()}:${path}`;
+
+  const app = express();
+  app.use(express.json());
+
+  // Log all requests and serve mocks
+  app.use((req: any, res: any) => {
+    const entry: LogEntry = {
+      timestamp: new Date(),
+      method: req.method,
+      path: req.path, // Express strips query string from req.path
+      mocked: false,
+    };
+    if (req.body && Object.keys(req.body).length > 0) {
+      entry.data = req.body;
+    }
+    requestLog.push(entry);
+
+    const mock = mocks.get(mockKey(req.method, req.path));
+    if (mock) {
+      entry.mocked = true;
+      res.status(mock.status);
+      if (mock.body) {
+        res.set('Content-Type', 'application/json');
+        res.send(mock.body);
+      } else {
+        res.end();
+      }
+    } else {
+      res.status(404).json({ error: 'Not mocked' });
+    }
+  });
+
+  let server: any;
+
+  const api = {
+    port,
+    start: () => {
+      server = app.listen(port);
+    },
+    stop: () => new Promise<void>((resolve) => server.close(() => resolve())),
+
+    setMock: (
+      path: string,
+      method: string = 'get',
+      response: { status?: number; data?: unknown } = {}
+    ) => {
+      const data = response.data ?? null;
+      mocks.set(mockKey(method, path), {
+        status: response.status ?? 200,
+        body: data != null ? JSON.stringify(data) : '',
+      });
+      return {
+        removeMock: () => mocks.delete(mockKey(method, path)),
+        log: () =>
+          requestLog.filter(
+            (e) => e.path === path && e.method === method.toUpperCase()
+          ),
+      };
+    },
+
+    setZetkinApiMock: (
+      apiPath: string,
+      method: string = 'get',
+      data?: unknown,
+      status?: number
+    ) => {
+      return api.setMock(`/v1${apiPath}`, method, {
+        status,
+        data: data ? { data } : undefined,
+      });
+    },
+
+    removeMock: (path?: string, method?: string) => {
+      if (path && method) {
+        mocks.delete(mockKey(method, path));
+      } else if (path) {
+        for (const key of mocks.keys()) {
+          if (key.endsWith(`:${path}`)) {
+            mocks.delete(key);
+          }
+        }
+      } else {
+        mocks.clear();
+      }
+    },
+
+    log: (path?: string, method?: string) => {
+      let log = requestLog;
+      if (path) {
+        log = log.filter((e) => e.path === path);
+      }
+      if (method) {
+        log = log.filter((e) => e.method === method.toUpperCase());
+      }
+      return log;
+    },
+
+    clearLog: () => {
+      requestLog = [];
+    },
+
+    teardown: () => {
+      const unmocked = requestLog.filter((e) => !e.mocked);
+      requestLog = [];
+      mocks.clear();
+      if (unmocked.length > 0) {
+        const unique = [
+          ...new Set(unmocked.map((e) => `${e.method} ${e.path}`)),
+        ];
+        throw new Error(
+          `Unmocked API routes (${unique.length}):\n` +
+            unique.map((p) => `  - ${p}`).join('\n')
+        );
+      }
+    },
+  };
+
+  return api;
+}
+
+// ---------------------------------------------------------------------------
 
 interface BenchmarkFixtures {
   login: () => void;
@@ -50,7 +194,11 @@ interface BenchmarkWorkerFixtures {
       data?: unknown,
       status?: number
     ) => { log: () => unknown[]; removeMock: () => void };
-    setMock: (...args: unknown[]) => unknown;
+    setMock: (
+      path: string,
+      method?: string,
+      response?: { status?: number; data?: unknown }
+    ) => { log: () => unknown[]; removeMock: () => void };
     clearLog: () => void;
     removeMock: (path?: string, method?: string) => void;
     log: (path?: string, method?: string) => unknown[];
@@ -119,56 +267,11 @@ const test = base.extend<BenchmarkFixtures, BenchmarkWorkerFixtures>({
   moxy: [
     async ({}, use, workerInfo) => {
       const MOXY_PORT = 3000 + workerInfo.workerIndex;
+      const mockServer = createMockServer(MOXY_PORT);
 
-      const { start, stop, setMock, ...rest } = moxy({
-        port: MOXY_PORT,
-      });
-
-      const setZetkinApiMock = (
-        apiPath: string,
-        method: string = 'get',
-        data?: unknown,
-        status?: number
-      ) => {
-        return setMock(`/v1${apiPath}`, method, {
-          status,
-          data: data ? { data } : undefined,
-        });
-      };
-
-      const teardown = () => {
-        const unmocked = rest.log().filter(
-          (e: { mocked: boolean }) => !e.mocked
-        );
-        rest.clearLog();
-        rest.removeMock();
-        if (unmocked.length > 0) {
-          const unique = [
-            ...new Set(
-              unmocked.map(
-                (e: { method: string; path: string }) =>
-                  `${e.method} ${e.path}`
-              )
-            ),
-          ];
-          throw new Error(
-            `Unmocked API routes (${unique.length}):\n` +
-              unique.map((p: string) => `  - ${p}`).join('\n')
-          );
-        }
-      };
-
-      start();
-
-      await use({
-        port: MOXY_PORT,
-        setZetkinApiMock,
-        setMock,
-        teardown,
-        ...rest,
-      });
-
-      await stop();
+      mockServer.start();
+      await use(mockServer);
+      await mockServer.stop();
     },
     { auto: true, scope: 'worker' },
   ],
