@@ -162,9 +162,9 @@ for ref in "${REFS[@]}"; do
   git checkout -- .
   git checkout "$ref"
 
-  # Install dependencies (needed when switching between branches with different deps)
+  # Install dependencies (clean install to avoid stale modules from other branches)
   echo "Installing dependencies..."
-  npm install --legacy-peer-deps 2>&1 | tail -1
+  npm ci --legacy-peer-deps 2>&1 | tail -1
 
   # Build (retry once on failure — Google Fonts DNS can be flaky)
   if [[ $SKIP_BUILD -eq 0 ]]; then
