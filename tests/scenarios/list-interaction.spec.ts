@@ -5,6 +5,7 @@ import {
   AllMembersView,
   KPD,
   PeopleFields,
+  ReferendumSignatures,
   ViewFolders,
 } from '../../mock-data';
 
@@ -40,6 +41,7 @@ test.describe('List interaction benchmark', () => {
     );
     moxy.setZetkinApiMock('/orgs/1/people/view_folders', 'get', ViewFolders);
     moxy.setZetkinApiMock('/orgs/1/people/fields', 'get', PeopleFields);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1', 'get', ReferendumSignatures);
     // People avatars (for rendered rows)
     for (let i = 1; i <= 10; i++) {
       moxy.setZetkinApiMock(`/orgs/1/people/${i}/avatar`, 'get', null, 204);
