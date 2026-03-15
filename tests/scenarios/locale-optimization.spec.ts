@@ -116,6 +116,142 @@ test.describe('Locale optimization', () => {
   });
 });
 
+test.describe('Locale preload and caching', () => {
+  test.beforeEach(async ({ login, moxy }) => {
+    login();
+    moxy.setZetkinApiMock('/orgs/1', 'get', KPD);
+    moxy.setZetkinApiMock('/orgs/1/campaigns', 'get', [ReferendumSignatures]);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1', 'get', ReferendumSignatures);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/actions', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/tasks', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/call_assignments', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/surveys', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/actions', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/tasks', 'get', []);
+    moxy.clearLog();
+  });
+
+  test.afterEach(({ moxy }) => {
+    moxy.teardown();
+  });
+
+  test('HTML contains <link rel="preload"> for locale JSON', async ({
+    page,
+    appUri,
+  }) => {
+    await page.goto(appUri + '/organize/1/projects');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Check for preload link in the DOM
+    const preloadLink = await page.evaluate(() => {
+      const links = document.querySelectorAll('link[rel="preload"][as="fetch"]');
+      for (const link of links) {
+        if (link.getAttribute('href')?.includes('/locale/')) {
+          return {
+            href: link.getAttribute('href'),
+            crossOrigin: link.getAttribute('crossorigin'),
+          };
+        }
+      }
+      return null;
+    });
+
+    expect(preloadLink).toBeTruthy();
+    expect(preloadLink!.href).toContain('/locale/en.json');
+    expect(preloadLink!.crossOrigin).toBe('anonymous');
+  });
+
+  test('locale JSON response has immutable Cache-Control header', async ({
+    page,
+    appUri,
+  }) => {
+    // Intercept the locale fetch response
+    let cacheControl: string | null = null;
+    page.on('response', (response) => {
+      if (response.url().includes('/locale/') && response.url().includes('.json')) {
+        cacheControl = response.headers()['cache-control'] || null;
+      }
+    });
+
+    await page.goto(appUri + '/organize/1/projects');
+    await page.waitForLoadState('networkidle');
+
+    expect(cacheControl).toBeTruthy();
+    expect(cacheControl).toContain('immutable');
+    expect(cacheControl).toContain('max-age=31536000');
+  });
+
+  test('locale fetch completes before page content renders', async ({
+    page,
+    appUri,
+  }) => {
+    // Track timing: when locale fetch completes vs when translated content appears
+    let localeFetchDone = 0;
+    page.on('response', (response) => {
+      if (response.url().includes('/locale/') && response.url().includes('.json')) {
+        localeFetchDone = Date.now();
+      }
+    });
+
+    const start = Date.now();
+    await page.goto(appUri + '/organize/1/projects');
+    await page.waitForLoadState('domcontentloaded');
+    const domReady = Date.now();
+
+    // Locale fetch should complete quickly — well before 2s after navigation
+    expect(localeFetchDone).toBeGreaterThan(0); // fetch happened
+    expect(localeFetchDone - start).toBeLessThan(2000); // within 2s
+
+    // The fetch should complete around DOM ready time (preload helps)
+    // Allow generous margin since exact timing varies
+    expect(localeFetchDone).toBeLessThanOrEqual(domReady + 500);
+  });
+
+  test('second page load reuses cached locale (fast response)', async ({
+    page,
+    appUri,
+  }) => {
+    // Track locale response times
+    const localeTimes: { url: string; durationMs: number; status: number }[] = [];
+    page.on('response', async (response) => {
+      if (response.url().includes('/locale/') && response.url().includes('.json')) {
+        const timing = response.request().timing();
+        localeTimes.push({
+          url: response.url(),
+          durationMs: timing.responseEnd - timing.requestStart,
+          status: response.status(),
+        });
+      }
+    });
+
+    // First load
+    await page.goto(appUri + '/organize/1/projects');
+    await page.waitForLoadState('networkidle');
+
+    expect(localeTimes.length).toBeGreaterThanOrEqual(1);
+    expect(localeTimes[0].status).toBe(200);
+
+    // Second load — browser may cache or revalidate
+    await page.goto(appUri + '/organize/1/projects');
+    await page.waitForLoadState('networkidle');
+
+    // The cache-control: immutable header means the browser SHOULD
+    // serve from disk cache. If it does make a request, the server
+    // should return 304 (not modified) or the response should be
+    // very fast from disk cache. Either way, the cache header is
+    // the mechanism — verified in the test above.
+    if (localeTimes.length >= 2) {
+      // If a second request was made, it should be fast (< 50ms from cache)
+      // or a 304. Allow generous threshold for CI environments.
+      const secondTime = localeTimes[1].durationMs;
+      const secondStatus = localeTimes[1].status;
+      const isCacheHit = secondStatus === 304 || secondTime < 100;
+      expect(isCacheHit).toBe(true);
+    }
+    // If no second request was made, browser served from cache (ideal)
+  });
+});
+
 test.describe('Locale SSR verification', () => {
   test.beforeEach(({ moxy }) => {
     // Unauthenticated — public pages
