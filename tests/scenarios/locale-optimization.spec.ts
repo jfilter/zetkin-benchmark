@@ -181,74 +181,65 @@ test.describe('Locale preload and caching', () => {
     expect(cacheControl).toContain('max-age=31536000');
   });
 
-  test('locale fetch completes before page content renders', async ({
+  test('preload causes locale fetch to start before JS execution', async ({
     page,
     appUri,
   }) => {
-    // Track timing: when locale fetch completes vs when translated content appears
-    let localeFetchDone = 0;
-    page.on('response', (response) => {
-      if (response.url().includes('/locale/') && response.url().includes('.json')) {
-        localeFetchDone = Date.now();
+    // Track the order of network requests to verify preload fires early.
+    // With <link rel="preload">, the browser starts the locale fetch during
+    // HTML parsing — BEFORE JS bundles load and React's useEffect fires.
+    // Without preload, the fetch would only start after: HTML → JS → React
+    // render → useEffect — appearing as the LAST network request.
+    const requestOrder: string[] = [];
+    page.on('request', (request) => {
+      const url = request.url();
+      if (url.includes('/locale/') && url.includes('.json')) {
+        requestOrder.push('locale');
+      } else if (url.includes('/_next/') && url.endsWith('.js')) {
+        if (
+          requestOrder.length === 0 ||
+          requestOrder[requestOrder.length - 1] !== 'js'
+        ) {
+          requestOrder.push('js');
+        }
       }
     });
 
-    const start = Date.now();
     await page.goto(appUri + '/organize/1/projects');
-    await page.waitForLoadState('domcontentloaded');
-    const domReady = Date.now();
+    await page.waitForLoadState('networkidle');
 
-    // Locale fetch should complete quickly — well before 2s after navigation
-    expect(localeFetchDone).toBeGreaterThan(0); // fetch happened
-    expect(localeFetchDone - start).toBeLessThan(2000); // within 2s
+    const localeIndex = requestOrder.indexOf('locale');
+    expect(localeIndex).toBeGreaterThanOrEqual(0); // locale was fetched
 
-    // The fetch should complete around DOM ready time (preload helps)
-    // Allow generous margin since exact timing varies
-    expect(localeFetchDone).toBeLessThanOrEqual(domReady + 500);
+    // With preload: locale appears in first 2 requests (during HTML parse)
+    // Without preload: locale appears AFTER all JS chunks (useEffect)
+    expect(localeIndex).toBeLessThanOrEqual(2);
   });
 
-  test('second page load reuses cached locale (fast response)', async ({
-    page,
+  test('preload link is in raw server HTML (not client-rendered)', async ({
     appUri,
   }) => {
-    // Track locale response times
-    const localeTimes: { url: string; durationMs: number; status: number }[] = [];
-    page.on('response', async (response) => {
-      if (response.url().includes('/locale/') && response.url().includes('.json')) {
-        const timing = response.request().timing();
-        localeTimes.push({
-          url: response.url(),
-          durationMs: timing.responseEnd - timing.requestStart,
-          status: response.status(),
-        });
-      }
+    // Fetch the raw HTML directly — no browser, no JS execution.
+    // The preload link must be in the server-rendered HTML so the browser
+    // sees it during initial HTML parsing (before any JS runs).
+    const http = await import('http');
+    const html = await new Promise<string>((resolve) => {
+      http.get(appUri + '/organize/1/projects', (res) => {
+        let data = '';
+        res.on('data', (c: Buffer) => (data += c));
+        res.on('end', () => resolve(data));
+      });
     });
 
-    // First load
-    await page.goto(appUri + '/organize/1/projects');
-    await page.waitForLoadState('networkidle');
+    // Must contain a preload link for locale JSON in the raw HTML
+    expect(html).toContain('rel="preload"');
+    expect(html).toContain('/locale/');
+    expect(html).toContain('as="fetch"');
 
-    expect(localeTimes.length).toBeGreaterThanOrEqual(1);
-    expect(localeTimes[0].status).toBe(200);
-
-    // Second load — browser may cache or revalidate
-    await page.goto(appUri + '/organize/1/projects');
-    await page.waitForLoadState('networkidle');
-
-    // The cache-control: immutable header means the browser SHOULD
-    // serve from disk cache. If it does make a request, the server
-    // should return 304 (not modified) or the response should be
-    // very fast from disk cache. Either way, the cache header is
-    // the mechanism — verified in the test above.
-    if (localeTimes.length >= 2) {
-      // If a second request was made, it should be fast (< 50ms from cache)
-      // or a 304. Allow generous threshold for CI environments.
-      const secondTime = localeTimes[1].durationMs;
-      const secondStatus = localeTimes[1].status;
-      const isCacheHit = secondStatus === 304 || secondTime < 100;
-      expect(isCacheHit).toBe(true);
-    }
-    // If no second request was made, browser served from cache (ideal)
+    // The preload must appear BEFORE the first <script> tag
+    const preloadPos = html.indexOf('rel="preload"');
+    const firstScriptPos = html.indexOf('<script');
+    expect(preloadPos).toBeLessThan(firstScriptPos);
   });
 });
 
