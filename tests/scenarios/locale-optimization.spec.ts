@@ -241,6 +241,79 @@ test.describe('Locale preload and caching', () => {
     const firstScriptPos = html.indexOf('<script');
     expect(preloadPos).toBeLessThan(firstScriptPos);
   });
+
+  test('browser disk cache serves locale on second load (CDP verified)', async ({
+    appUri,
+    moxy,
+  }) => {
+    // Use a persistent context (not newContext which is incognito with no
+    // disk cache) and CDP to verify the browser actually caches the locale
+    // file on second load.
+    const { chromium } = await import('@playwright/test');
+    const os = await import('os');
+    const path = await import('path');
+    const fs = await import('fs');
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-cache-'));
+
+    moxy.setZetkinApiMock('/orgs/1', 'get', KPD);
+    moxy.setZetkinApiMock('/orgs/1/campaigns', 'get', [ReferendumSignatures]);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1', 'get', ReferendumSignatures);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/actions', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/tasks', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/call_assignments', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/surveys', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/actions', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/tasks', 'get', []);
+
+    const ctx = await chromium.launchPersistentContext(tmpDir, {
+      headless: true,
+    });
+    const page = ctx.pages()[0] || (await ctx.newPage());
+
+    // Count actual server hits for locale files (most honest test)
+    let serverHits = 0;
+    const originalFetch = page.route;
+    // Don't use page.route (disables cache) — count hits via CDP instead
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Network.enable');
+
+    const localeFromCache: boolean[] = [];
+    const servedFromCache = new Set<string>();
+
+    cdp.on('Network.requestServedFromCache', (params: { requestId: string }) => {
+      servedFromCache.add(params.requestId);
+    });
+
+    cdp.on(
+      'Network.responseReceived',
+      (params: { requestId: string; response: { url: string; fromDiskCache?: boolean } }) => {
+        if (params.response.url.includes('/locale/')) {
+          localeFromCache.push(servedFromCache.has(params.requestId));
+        }
+      }
+    );
+
+    // First load — network
+    await page.goto(appUri + '/organize/1/projects');
+    await page.waitForLoadState('networkidle');
+
+    expect(localeFromCache.length).toBeGreaterThanOrEqual(1);
+    expect(localeFromCache[0]).toBe(false); // First load: from network
+
+    // Reload — should be from cache
+    localeFromCache.length = 0;
+    servedFromCache.clear();
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    expect(localeFromCache.length).toBeGreaterThanOrEqual(1);
+    expect(localeFromCache[0]).toBe(true); // Second load: from cache
+
+    await cdp.detach();
+    await ctx.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 });
 
 test.describe('Locale SSR verification', () => {
