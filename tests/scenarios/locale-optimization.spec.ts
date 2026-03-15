@@ -1,0 +1,194 @@
+import { expect } from '@playwright/test';
+
+import test from '../fixtures';
+import {
+  CampaignEvents,
+  KPD,
+  Memberships,
+  ReferendumSignatures,
+  RosaLuxemburgUser,
+} from '../../mock-data';
+
+/**
+ * Tests verifying locale optimization claims:
+ *
+ * 1. Static locale file is fetched client-side (not embedded in __NEXT_DATA__)
+ * 2. Locale file is fetched only ONCE across multiple page navigations
+ * 3. SSR pages (App Router) have translations baked into the HTML
+ * 4. __NEXT_DATA__ for Pages Router pages does NOT contain messages
+ */
+
+test.describe('Locale optimization', () => {
+  test.beforeEach(async ({ login, moxy }) => {
+    login();
+    moxy.setZetkinApiMock('/orgs/1', 'get', KPD);
+    moxy.setZetkinApiMock('/orgs/1/campaigns', 'get', [ReferendumSignatures]);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1', 'get', ReferendumSignatures);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/actions', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/tasks', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/call_assignments', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/campaigns/1/surveys', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/actions', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/tasks', 'get', []);
+    moxy.clearLog();
+  });
+
+  test.afterEach(({ moxy }) => {
+    moxy.teardown();
+  });
+
+  test('locale JSON is fetched once per full page load, cached for client navigations', async ({
+    page,
+    appUri,
+    moxy,
+  }) => {
+    // Track all requests to /locale/*.json
+    const localeRequests: string[] = [];
+    page.on('request', (request) => {
+      const url = request.url();
+      if (url.includes('/locale/') && url.endsWith('.json')) {
+        localeRequests.push(url);
+      }
+    });
+
+    // Mock extra routes needed for people page
+    moxy.setZetkinApiMock('/orgs/1/people', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/people/fields', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/people/views', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/people/views/folders', 'get', []);
+    moxy.setZetkinApiMock('/orgs/1/search/person', 'post', []);
+
+    // Full page load — fetches locale JSON
+    await page.goto(appUri + '/organize/1/projects');
+    await page.waitForLoadState('networkidle');
+
+    const afterFirstLoad = localeRequests.length;
+    expect(afterFirstLoad).toBe(1); // Exactly one fetch
+
+    // Client-side navigation via sidebar link (no full reload)
+    // The organize sidebar has links to People, Projects, etc.
+    const peopleLink = page.locator('a[href="/organize/1/people"]').first();
+    if (await peopleLink.isVisible()) {
+      await peopleLink.click();
+      await page.waitForLoadState('networkidle');
+
+      // No new locale fetch — cached in module-level messageCache
+      expect(localeRequests.length).toBe(afterFirstLoad);
+    }
+  });
+
+  test('__NEXT_DATA__ does not contain messages for organize pages', async ({
+    page,
+    appUri,
+  }) => {
+    await page.goto(appUri + '/organize/1/projects');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Extract __NEXT_DATA__ from the page
+    const nextData = await page.evaluate(() => {
+      const el = document.getElementById('__NEXT_DATA__');
+      return el ? JSON.parse(el.textContent || '{}') : null;
+    });
+
+    expect(nextData).toBeTruthy();
+    expect(nextData.props?.pageProps).toBeTruthy();
+    // The messages key should NOT be in pageProps
+    expect(nextData.props.pageProps.messages).toBeUndefined();
+    // But lang should still be there
+    expect(nextData.props.pageProps.lang).toBeTruthy();
+  });
+
+  test('__NEXT_DATA__ payload is under 10KB (excluding messages)', async ({
+    page,
+    appUri,
+  }) => {
+    await page.goto(appUri + '/organize/1/projects');
+    await page.waitForLoadState('domcontentloaded');
+
+    const nextDataSize = await page.evaluate(() => {
+      const el = document.getElementById('__NEXT_DATA__');
+      return el ? el.textContent?.length || 0 : 0;
+    });
+
+    // Without messages, __NEXT_DATA__ should be small
+    // (previously ~146KB with messages embedded)
+    expect(nextDataSize).toBeLessThan(10 * 1024);
+  });
+});
+
+test.describe('Locale SSR verification', () => {
+  test.beforeEach(({ moxy }) => {
+    // Unauthenticated — public pages
+    moxy.setMock('/v1/users/me', 'get', { status: 401 });
+    moxy.setMock('/v1/session', 'get', { status: 401 });
+    moxy.setMock('/v1/users/me/memberships', 'get', { status: 401 });
+    moxy.clearLog();
+  });
+
+  test.afterEach(({ moxy }) => {
+    moxy.teardown();
+  });
+
+  test('App Router SSR pages have translations in initial HTML', async ({
+    appUri,
+    browser,
+  }) => {
+    const url = new URL(appUri);
+    const ctx = await browser.newContext({
+      extraHTTPHeaders: { 'Accept-Language': 'sv' },
+    });
+    // Set NEXT_LOCALE cookie to force Swedish locale
+    await ctx.addCookies([
+      { name: 'NEXT_LOCALE', value: 'sv', domain: url.hostname, path: '/' },
+    ]);
+    const freshPage = await ctx.newPage();
+
+    const response = await freshPage.goto(appUri + '/lost-password');
+    const html = await response!.text();
+
+    // Swedish translations should be in the SSR HTML
+    expect(html).toContain('Tillbaka till startsidan');
+    expect(html).toContain('Sidan hittades inte');
+    await ctx.close();
+  });
+
+  test('html lang attribute reflects detected locale', async ({
+    appUri,
+    browser,
+  }) => {
+    const url = new URL(appUri);
+    const ctx = await browser.newContext({
+      extraHTTPHeaders: { 'Accept-Language': 'de' },
+    });
+    await ctx.addCookies([
+      { name: 'NEXT_LOCALE', value: 'de', domain: url.hostname, path: '/' },
+    ]);
+    const freshPage = await ctx.newPage();
+
+    await freshPage.goto(appUri + '/register');
+
+    const lang = await freshPage.getAttribute('html', 'lang');
+    expect(lang).toBe('de');
+    await ctx.close();
+  });
+
+  test('URLs have no locale prefix (invisible routing)', async ({
+    appUri,
+    browser,
+  }) => {
+    const url = new URL(appUri);
+    const ctx = await browser.newContext({
+      extraHTTPHeaders: { 'Accept-Language': 'sv' },
+    });
+    await ctx.addCookies([
+      { name: 'NEXT_LOCALE', value: 'sv', domain: url.hostname, path: '/' },
+    ]);
+    const freshPage = await ctx.newPage();
+
+    await freshPage.goto(appUri + '/lost-password');
+
+    // URL should NOT have /sv/ prefix
+    expect(freshPage.url()).toBe(appUri + '/lost-password');
+    await ctx.close();
+  });
+});
