@@ -66,12 +66,55 @@ perl -pi -e 's/10<\(l=i3\+300-ea\(\)\)/10<(l=i3+0-ea())/' .next/static/chunks/fr
 
 With the throttle disabled, Next 15 is at **full parity with Next 14**. The entire navigation regression is this one timer. (`users/me` fires at ~70ms instead of ~360ms, confirming the whole post-reveal cascade shifts forward.)
 
-## Why the app triggers it
+## Why the app triggers it: the exact suspender
 
-- Organize pages return `null` during SSR (`useServerSide()`), so all content mounts client-side.
-- On mount, data hooks built on `useRemoteList`/`useRemoteItem` **suspend** (`core/hooks/useRemoteList.ts` throws the fetch promise) inside page-level boundaries (e.g. `LoadingBoundary` in `pages/organize/[orgId]/projects/index.tsx`) and the app-level bare `<Suspense>` in `core/Providers.tsx`.
-- The skeleton commits, data arrives quickly, React 19 holds the content until fallback-time + 300ms.
-- React 18 (current main) does not throttle this case — hence no regression on Next 14.
+Three instruments pinned it down: a mid-throttle screenshot (the page is **completely blank**, not even the sidebar), a React DevTools hook stub walking committed fibers (the boundary showing the fallback is the bare `<Suspense>` in `core/Providers.tsx` — its hidden children are `CssBaseline > … > NoSsr`, i.e. the whole app), and a dev-build `react-dom` patch logging every caught thenable:
+
+```
+[THROWN-THENABLE] AllCampaignsSummaryPage
+```
+
+The chain:
+
+1. `pages/organize/[orgId]/projects/index.tsx` (`AllCampaignsSummaryPage`) calls `useActivityOverview` → `useEventsFromDateRange`, **in the hook phase, before the page returns its own `LoadingBoundary`**.
+2. `src/features/events/hooks/useEventsFromDateRange.ts:48` contains the codebase's only raw `throw promise` (instrumenting `useRemoteList`/`useRemoteItem` showed they never fire on this page).
+3. The nearest boundary above the page is the **fallback-less `<Suspense>` in `core/Providers.tsx`** — the entire app unmounts to nothing.
+4. Data arrives ~10ms later, the retry completes, React 19 throttles the reveal to fallback-time + 300ms.
+
+Notably, current `main` has the identical structure (`Providers.tsx`, `_app.tsx` `<NoSsr>`, the `throw promise`). On React 18 there is no 300ms throttle, but **the blank-app flash during the events fetch exists in production today** — it's just short when the API is fast.
+
+## The fix (verified)
+
+Make the hook non-suspending — fire-and-forget the load, render days that haven't loaded yet as empty, and let the Redux update re-render when data lands (12 lines in `useEventsFromDateRange.ts`, branch commit `1f02dd4a8`):
+
+| Warm `/organize/1/projects` load | Time |
+|---|---:|
+| Next 14 main (React 18, May baseline) | ~95–114ms |
+| Next 15, suspending hook | **545ms** |
+| Next 15, react-dom throttle → 0 (diagnostic) | 103–111ms |
+| **Next 15, non-suspending hook (app-level fix)** | **100–122ms** |
+
+No react-dom patch needed. The page now shows its normal layout + skeletons while loading instead of a blank app, and there is no Suspense fallback commit left to throttle. For a production PR, the loading state should additionally be threaded through `useActivityOverview` and the calendar hooks (`useDayCalendarEvents`, `useWeekCalendarEvents`, `useMonthCalendarEvents`, `useParallelEvents`, `useRelatedEvents`) so consumers can render skeletons instead of briefly-empty lists.
+
+Full benchmark suite on the fixed branch (5 iterations, same methodology as all other tables):
+
+| Scenario | N15 before fix | N15 after fix | N14 main (May ref) |
+|---|---:|---:|---:|
+| nav-projects-load | 545ms | **155ms** | 98–114ms |
+| nav-back-to-projects | 578ms | **158ms** | 106–122ms |
+| nav-full-workflow | 1717ms | **833ms** | 718–781ms |
+| nav-campaign-load | 205ms | 243ms | 189–237ms |
+| nav-people-list-load | 254ms | 206ms | 182–190ms |
+| nav-person-detail-load | 144ms | 123ms | 102–120ms |
+| rapid-tab-switching | 769ms | 794ms | 645–753ms |
+
+## Where else the same class of problem exists
+
+1. **23 hooks suspend by design** (built on `useRemoteList`/`useRemoteItem` — both `throw` the fetch promise on first mount): call (`useMyAssignments`, `useUnfinishedCalls`, …), canvass (`useHousehold(s)`, `useLocationVisits`, …), areaAssignments (`useAssignmentAreas`, `useAreaAssignmentMetrics`), my (`useAllEvents`, `useMyEvents`), organizations (`useSuborgsWithStats`, …), public (`usePublicSubOrgs`, `useUserMemberships`, `useUpcomingOrgEvents`), profile, user. Every first mount of a page using one of these with fast-resolving data pays up to +300ms on React 19.
+2. **The `/my/*` App Router regressions (+450ms in the May runs) are this exact mechanism**: `useMyActivities` → `useMyCallAssignments` + `useMyEvents` (both `useRemoteList`) suspend inside the Suspense boundaries in `features/my/pages/{HomePage,AllEventsPage,MyOrgsPage}.tsx`. Unverified-but-likely: sequential suspensions (React 19 no longer pre-renders siblings after a suspension) may stack more than one 300ms window — my-orgs was +730ms.
+3. **Structural hazard**: the fallback-less `<Suspense>` in `core/Providers.tsx` + `<NoSsr>` in `_app.tsx` means any suspension that escapes a page-level boundary blanks the entire app — on React 18 today too, just without the extra 300ms. Two further small fallback-committing boundaries (unidentified, visually harmless) still show up in the fiber-walk on the projects page.
+
+The systematic mitigation for the Next 15 upgrade: audit these call sites page by page with the diagnostic spec (`[THROWN-THENABLE]` patch + fiber walk), and convert first-mount paths of entry pages to non-suspending rendering, starting with `/my/*`.
 
 ## Real-world impact
 
