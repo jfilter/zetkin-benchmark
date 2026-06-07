@@ -114,6 +114,16 @@ Full benchmark suite on the fixed branch (5 iterations, same methodology as all 
 2. **The `/my/*` App Router regressions (+450ms in the May runs) are this exact mechanism**: `useMyActivities` → `useMyCallAssignments` + `useMyEvents` (both `useRemoteList`) suspend inside the Suspense boundaries in `features/my/pages/{HomePage,AllEventsPage,MyOrgsPage}.tsx`. Unverified-but-likely: sequential suspensions (React 19 no longer pre-renders siblings after a suspension) may stack more than one 300ms window — my-orgs was +730ms.
 3. **Structural hazard**: the fallback-less `<Suspense>` in `core/Providers.tsx` + `<NoSsr>` in `_app.tsx` means any suspension that escapes a page-level boundary blanks the entire app — on React 18 today too, just without the extra 300ms. Two further small fallback-committing boundaries (unidentified, visually harmless) still show up in the fiber-walk on the projects page.
 
+### The three classes are independent
+
+The fixes touch disjoint files and none requires another:
+
+- Fixing **1** (the raw throw) removes both the blank-app flash (today, React 18) and the throttle (React 19) for projects + all calendar views — regardless of 2 and 3. → shipped as its own PR against `main`.
+- Fixing **2** (useRemoteList/Item call sites) is per-page work; those pages have their own skeleton boundaries, so they never blanked — they only gain the +300ms on React 19. → follow-ups, `/my/*` first.
+- Fixing **3** (fallback-less root `<Suspense>`) only converts "blank" into "skeleton" for whatever still escapes; it does **not** remove the React 19 throttle (any fallback commit triggers it). It stays valuable as defense-in-depth against future suspensions. → separate small PR/design discussion.
+
+Coupling exists only between *symptoms*: the blank-app variant of 1 needs 3's structure to manifest. The mitigations are orthogonal.
+
 The systematic mitigation for the Next 15 upgrade: audit these call sites page by page with the diagnostic spec (`[THROWN-THENABLE]` patch + fiber walk), and convert first-mount paths of entry pages to non-suspending rendering, starting with `/my/*`.
 
 ## Real-world impact
