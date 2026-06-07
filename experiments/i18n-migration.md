@@ -94,6 +94,8 @@ Debugging breakdown for `/organize/1/projects` on `migrate-intl+next15+perf`:
 
 The 305ms gap is React 19 hydration on the 2.06 MB uncompressed `pages/_app.js` bundle. No single long task — distributed hydration work.
 
+> **Correction (2026-06-07):** this hydration hypothesis was falsified — halving the `_app` bundle changes nothing ([bundle-splitting.md](./bundle-splitting.md)). The 300ms gap is React 19's Suspense fallback throttling (`FALLBACK_THROTTLE_MS`); proof in [react19-suspense-throttle.md](./react19-suspense-throttle.md).
+
 ### 3. Static `/my` Routes optimization doesn't help the regression
 
 We expected `perf/next15-05-static-routes` to fix the Pages Router regression. It doesn't, because that optimization targets App Router `/my/*` pages, not the Pages Router `/organize/*` pages where the regression lives. Pages Router pages can't use the Full Route Cache (they have `getServerSideProps`).
@@ -106,11 +108,9 @@ We expected `perf/next15-05-static-routes` to fix the Pages Router regression. I
 
 Land `migrate/next-intl` independently on current main (Next 14). Wins are real, regressions are zero.
 
-The Next 15 upgrade ([#3544](https://github.com/zetkin/app.zetkin.org/pull/3544)) still needs a separate fix for the Pages Router hydration regression before it's mergeable. Candidate avenues:
+The Next 15 upgrade ([#3544](https://github.com/zetkin/app.zetkin.org/pull/3544)) still needs a separate fix for the Pages Router regression before it's mergeable.
 
-- Code-split the 2.06 MB `pages/_app.js` bundle aggressively (lazy-load rarely-used features)
-- Investigate whether specific Redux store init or Material-UI initialization is dominating hydration time on Next 15
-- Long term: migrate `/organize/*` from Pages Router to App Router
+> **Update (2026-06-07):** the avenues originally listed here (code-splitting `_app`, Redux/MUI init) are obsolete — the regression is React 19's Suspense fallback throttling, see [react19-suspense-throttle.md](./react19-suspense-throttle.md) for the proof and the actual mitigation.
 
 ## How to reproduce
 
