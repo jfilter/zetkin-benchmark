@@ -18,6 +18,13 @@ test.describe('Debug nav profile', () => {
 
   test('profile projects page load', async ({ page, appUri, moxy }) => {
     test.setTimeout(120_000);
+    // Surface in-page diagnostics (e.g. [SUSPEND] markers from instrumented hooks)
+    page.on('console', (msg) => {
+      const text = msg.text();
+      if (text.includes('[SUSPEND]') || text.includes('[FALLBACK]') || text.includes('[THROWN-THENABLE]')) {
+        console.log('  PAGE:', text.slice(0, 400));
+      }
+    });
     moxy.setZetkinApiMock('/orgs', 'get', [KPD]);
     const campaigns = [];
     for (let i = 1; i <= 20; i++) {
@@ -30,6 +37,56 @@ test.describe('Debug nav profile', () => {
     await page.addInitScript(() => {
       const w = window as any;
       w.__prof = { mutations: [], longtasks: [], paints: [], timers: [] };
+      // React DevTools hook stub: log Suspense boundaries that commit a fallback,
+      // with the component names of their (hidden) primary children
+      w.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+        isDisabled: false,
+        supportsFiber: true,
+        renderers: new Map(),
+        inject(r: unknown) {
+          this.renderers.set(1, r);
+          return 1;
+        },
+        onScheduleFiberRoot() {},
+        onCommitFiberUnmount() {},
+        onPostCommitFiberRoot() {},
+        setStrictMode() {},
+        onCommitFiberRoot(_id: unknown, root: any) {
+          try {
+            const t = Math.round(performance.now());
+            const found: string[] = [];
+            const nameOf = (f: any): string | null => {
+              const ty = f.type;
+              if (typeof ty === 'function') return ty.displayName || ty.name || 'anon';
+              if (typeof ty === 'string') return ty;
+              return null;
+            };
+            const collectNames = (f: any, out: string[], depth: number) => {
+              if (!f || out.length >= 8 || depth > 25) return;
+              const nm = nameOf(f);
+              if (nm && nm !== 'anon') out.push(nm);
+              collectNames(f.child, out, depth + 1);
+              if (depth < 4) collectNames(f.sibling, out, depth + 1);
+            };
+            const walk = (f: any, depth: number) => {
+              if (!f || depth > 400) return;
+              if (f.tag === 13 && f.memoizedState !== null) {
+                const names: string[] = [];
+                collectNames(f.child, names, 0);
+                found.push(names.join('>') || '(empty)');
+              }
+              walk(f.child, depth + 1);
+              walk(f.sibling, depth + 1);
+            };
+            walk(root.current, 0);
+            if (found.length) {
+              console.warn('[FALLBACK]', t, JSON.stringify(found));
+            }
+          } catch {
+            // ignore
+          }
+        },
+      };
       // Instrument timers >= 40ms with call stacks to find fixed delays
       const origSetTimeout = w.setTimeout.bind(w);
       w.setTimeout = (fn: any, delay?: number, ...args: any[]) => {
@@ -60,9 +117,22 @@ test.describe('Debug nav profile', () => {
     for (let iter = 0; iter < 4; iter++) {
       await page.goto('about:blank');
       const t0 = Date.now();
-      await page.goto(appUri + '/organize/1/projects');
+      const gotoPromise = page.goto(appUri + '/organize/1/projects');
+      // Screenshot mid-throttle-window (only on last iteration, warm server)
+      const midShot =
+        iter === 3
+          ? (async () => {
+              await new Promise((r) => setTimeout(r, 150));
+              await page.screenshot({ path: '/tmp/nav-mid-throttle.png' });
+            })()
+          : Promise.resolve();
+      await gotoPromise;
       await page.locator('text=All Projects').first().waitFor({ state: 'visible' });
       const total = Date.now() - t0;
+      await midShot;
+      if (iter === 3) {
+        await page.screenshot({ path: '/tmp/nav-after-reveal.png' });
+      }
 
       const data = await page.evaluate(() => {
         const w = window as any;

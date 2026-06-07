@@ -222,7 +222,7 @@ const test = base.extend<BenchmarkFixtures, BenchmarkWorkerFixtures>({
       process.chdir(APP_REPO_PATH);
 
       const app = next({
-        dev: false,
+        dev: !!process.env.DEV_MODE,
         dir: APP_REPO_PATH,
       });
 
