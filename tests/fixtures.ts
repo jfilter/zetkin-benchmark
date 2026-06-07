@@ -258,7 +258,9 @@ const test = base.extend<BenchmarkFixtures, BenchmarkWorkerFixtures>({
 
   moxy: [
     async ({}, use, workerInfo) => {
-      const MOXY_PORT = 3000 + workerInfo.workerIndex;
+      const MOXY_PORT =
+        parseInt(process.env.MOXY_PORT_BASE || '3000', 10) +
+        workerInfo.workerIndex;
       const mockServer = createMockServer(MOXY_PORT);
 
       mockServer.start();
