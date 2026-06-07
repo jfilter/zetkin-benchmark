@@ -111,7 +111,18 @@ Full benchmark suite on the fixed branch (5 iterations, same methodology as all 
 ## Where else the same class of problem exists
 
 1. **23 hooks suspend by design** (built on `useRemoteList`/`useRemoteItem` — both `throw` the fetch promise on first mount): call (`useMyAssignments`, `useUnfinishedCalls`, …), canvass (`useHousehold(s)`, `useLocationVisits`, …), areaAssignments (`useAssignmentAreas`, `useAreaAssignmentMetrics`), my (`useAllEvents`, `useMyEvents`), organizations (`useSuborgsWithStats`, …), public (`usePublicSubOrgs`, `useUserMemberships`, `useUpcomingOrgEvents`), profile, user. Every first mount of a page using one of these with fast-resolving data pays up to +300ms on React 19.
-2. **The `/my/*` App Router regressions (+450ms in the May runs) are this exact mechanism**: `useMyActivities` → `useMyCallAssignments` + `useMyEvents` (both `useRemoteList`) suspend inside the Suspense boundaries in `features/my/pages/{HomePage,AllEventsPage,MyOrgsPage}.tsx`. Unverified-but-likely: sequential suspensions (React 19 no longer pre-renders siblings after a suspension) may stack more than one 300ms window — my-orgs was +730ms.
+2. **The `/my/*` pages — verified and fixed (2026-06-07, follow-up investigation).** All three pages measured ~840ms (±5ms) — and crucially **the same ~840ms on current `main` with React 18**, so this was never Next-15-specific (React 18 throttles Suspense reveals too). Profiling showed five stacked retry-throttle timers all anchored to a fallback at t≈46. Converting the page-level data hooks (`useMyActivities` chain, `useAllEvents`, `MyOrgsList`) changed *nothing* — the dominant suspender sat in the **layout**: `ActivistPortalHeader` (rendered by `HomeLayout` above every `/my` page) calls the suspending `useUserMemberships` just to compute an `isOfficial` flag. Converting that one call site collapsed the cascade:
+
+   | my-pages (median, instant mock API) | before | after | Δ |
+   |---|---:|---:|---:|
+   | my-home (main, React 18) | 841ms | 129ms | **−85%** |
+   | my-orgs (main, React 18) | 841ms | 105ms | **−87%** |
+   | my-feed (main, React 18) | 843ms | 110ms | **−87%** |
+   | my-home (Next 15, React 19) | 842ms | 122ms | −85% |
+   | my-orgs (Next 15, React 19) | 828ms | 93ms | −89% |
+   | my-feed (Next 15, React 19) | 831ms | 102ms | −88% |
+
+   Lessons: (a) audit **layouts**, not just pages — a suspending hook in a layout gates every page beneath it; (b) converting leaf hooks is not enough as long as one suspender above them remains; (c) an earlier hypothesis blaming the staggered `Fade` entrance animations (`useIncrementalDelay`) for ~500ms was wrong — with the suspension gone the same animations cost almost nothing (MUI `Fade` keeps items `visibility:hidden` until their delay, so they stack *behind* a late reveal but are cheap after an early one). Diagnostic spec: `tests/scenarios/debug-my-home-profile.spec.ts`.
 3. **Structural hazard**: the fallback-less `<Suspense>` in `core/Providers.tsx` + `<NoSsr>` in `_app.tsx` means any suspension that escapes a page-level boundary blanks the entire app — on React 18 today too, just without the extra 300ms. Two further small fallback-committing boundaries (unidentified, visually harmless) still show up in the fiber-walk on the projects page.
 
 ### The three classes are independent
