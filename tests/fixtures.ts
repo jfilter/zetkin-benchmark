@@ -213,6 +213,12 @@ const test = base.extend<BenchmarkFixtures, BenchmarkWorkerFixtures>({
         process.env.ZETKIN_CLIENT_SECRET ||
         'MWQyZmE2M2UtMzM3Yi00ODUyLWI2NGMtOWY5YTY5NTY3YjU5';
       process.env.ZETKIN_USE_TLS = process.env.ZETKIN_USE_TLS || '0';
+      // Newer main requires MAPLIBRE_STYLE in middleware.ts (throws otherwise);
+      // PLAYWRIGHT=1 additionally skips the CSP middleware like upstream e2e
+      process.env.PLAYWRIGHT = '1';
+      process.env.MAPLIBRE_STYLE =
+        process.env.MAPLIBRE_STYLE ||
+        'https://api.maptiler.com/maps/streets/style.json?key=dummy';
       process.env.SESSION_PASSWORD =
         process.env.SESSION_PASSWORD || SESSION_PASSWORD;
 
